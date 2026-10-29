@@ -98,6 +98,39 @@ class FrozenSettingsPathTests(unittest.TestCase):
             self.assertEqual('{\n  "repair_combine": true\n}', path.read_text(encoding="utf-8"))
 
 
+class SaveSelectionTests(unittest.TestCase):
+    def test_open_browses_the_current_users_standard_save_folder(self):
+        selected = Path("C:/Users/example/AppData/Local/Voyage/Saved/SaveGames/123/slot.sav")
+        app = SimpleNamespace(_load=Mock())
+        with patch.object(
+            gui.filedialog, "askopenfilename", return_value=str(selected),
+        ) as browse:
+            gui.LastCaretakerEditor._open(app)
+        self.assertEqual("Select a The Last Caretaker save", browse.call_args.kwargs["title"])
+        self.assertEqual(editor.DEFAULT_SAVE_ROOT, browse.call_args.kwargs["initialdir"])
+        app._load.assert_called_once_with(selected)
+
+    def test_refresh_keeps_the_discovered_full_path_and_newest_selection(self):
+        newest = Path("C:/Users/example/AppData/Local/Voyage/Saved/SaveGames/123/newest.sav")
+        older = Path("C:/Users/example/AppData/Local/Voyage/Saved/SaveGames/123/older.sav")
+        combo = {}
+        selected = []
+        statuses = []
+        app = SimpleNamespace(
+            document=None,
+            candidates=[],
+            save_combo=combo,
+            save_var=SimpleNamespace(set=selected.append),
+            status_var=SimpleNamespace(set=statuses.append),
+        )
+        with patch.object(editor, "discover_saves", return_value=[newest, older]) as discover:
+            gui.LastCaretakerEditor._refresh_saves(app)
+        discover.assert_called_once_with()
+        self.assertEqual([str(newest), str(older)], combo["values"])
+        self.assertEqual([str(newest)], selected)
+        self.assertEqual(["Found 2 save(s)"], statuses)
+
+
 class CompressionMethodTests(unittest.TestCase):
     @staticmethod
     def _block(payload: bytes, raw_size: int, *, method: int = 2,
@@ -2964,6 +2997,17 @@ class ResponsiveGuiTests(unittest.TestCase):
             app.destroy()
         except gui.tk.TclError:
             pass  # a test may already have closed the window
+
+    def test_save_controls_identify_local_saves_and_browsing(self) -> None:
+        texts = []
+        pending = list(self.app.winfo_children())
+        while pending:
+            widget = pending.pop()
+            pending.extend(widget.winfo_children())
+            if isinstance(widget, (gui.ttk.Label, gui.ttk.Button)):
+                texts.append(widget.cget("text"))
+        self.assertIn("Save file on this PC:", texts)
+        self.assertIn("Browse...", texts)
 
     def _blocked(self) -> bool:
         app = self.app

@@ -35,11 +35,16 @@ The dependency is `pyooz` (imported as `ooz`), an open-source decoder with
 Windows wheels for Python 3.8+. No game DLLs are copied or required. Older
 zlib saves remain readable even when the optional decoder is not installed.
 
-The editor automatically finds saves under:
+At launch, the editor automatically finds saves in the current Windows
+account's standard game-save folder:
 
 `%LOCALAPPDATA%\Voyage\Saved\SaveGames\<SteamId>\<SteamId>_<slot>.sav`
 
-You can also open any compatible `.sav` manually.
+It loads the most recently modified save it finds. The **Save file on this
+PC** selector shows the full path, and **Browse...** opens this PC's standard
+save folder so you can select a different save. Use **Refresh** to rescan.
+No Windows username or save path is bundled with the application. You can also
+browse to any compatible `.sav` manually.
 
 ## Features
 

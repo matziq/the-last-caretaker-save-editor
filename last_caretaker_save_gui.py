@@ -525,7 +525,7 @@ class LastCaretakerEditor(tk.Tk):
         top.pack(fill=tk.X)
         save_row = ttk.Frame(top)
         save_row.pack(fill=tk.X)
-        ttk.Label(save_row, text="Save:").pack(side=tk.LEFT)
+        ttk.Label(save_row, text="Save file on this PC:").pack(side=tk.LEFT)
         self.save_var = tk.StringVar()
         self.save_combo = ttk.Combobox(
             save_row, textvariable=self.save_var, state="readonly"
@@ -535,7 +535,7 @@ class LastCaretakerEditor(tk.Tk):
         actions = ttk.Frame(top)
         actions.pack(fill=tk.X, pady=(6, 0))
         ttk.Button(actions, text="Refresh", command=self._refresh_saves).pack(side=tk.LEFT, padx=2)
-        ttk.Button(actions, text="Open...", command=self._open).pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions, text="Browse...", command=self._open).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Save Changes", command=self._save).pack(side=tk.LEFT, padx=(10, 2))
         ttk.Button(actions, text="Reload", command=lambda: self._reload(prompt=True)).pack(side=tk.LEFT, padx=2)
         self.confirm_save_var = tk.BooleanVar(value=bool(self.settings.get("confirm_save", True)))
@@ -1443,7 +1443,7 @@ class LastCaretakerEditor(tk.Tk):
 
     def _open(self) -> None:
         path = filedialog.askopenfilename(
-            title="Open The Last Caretaker save",
+            title="Select a The Last Caretaker save",
             initialdir=save_io.DEFAULT_SAVE_ROOT,
             filetypes=(("The Last Caretaker saves", "*.sav"), ("All files", "*.*")),
         )
