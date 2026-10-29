@@ -1,0 +1,1167 @@
+{
+ "source": "pakchunk0-Windows.utoc:Voyage/Content/Maps/VoyageWorld2.umap",
+ "units": "metres",
+ "locations": [
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFCD4D02_c8105dcf4bd1db25_1868619936",
+   "world": "voyageworld2",
+   "ident": "BlackVeinStation",
+   "key": "Location_BlackVeinStation",
+   "name": "Black Vein Station",
+   "x": 4945.81,
+   "y": -6973.5,
+   "z": -4.47
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFAA5002_2aa89ad0292fc8d5_1105324814",
+   "world": "voyageworld2",
+   "ident": "BrightonGrave",
+   "key": "Location_Grave_Brighton",
+   "name": "Brighton Grave",
+   "x": 5796.02,
+   "y": -1322.92,
+   "z": -157.27
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527924602_63f871b205587436_1682488704",
+   "world": "voyageworld2",
+   "ident": "DepotA",
+   "key": "Location_CentralWarehouse_Alpha",
+   "name": "Central Warehouse Alpha",
+   "x": 6693.97,
+   "y": 2286.04,
+   "z": 0.95
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A5520BC402_8f04c4dbd228d63d_1699974632",
+   "world": "voyageworld2",
+   "ident": "StarChildA",
+   "key": "Location_Sieve_Node_Facility_A",
+   "name": "Courier Sieve Node Facility",
+   "x": 16883.38,
+   "y": -119.75,
+   "z": 0.12
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF30A602_99aa3f7bdf552e59_1854311519",
+   "world": "voyageworld2",
+   "ident": "Cave06",
+   "key": "Location_Cave6",
+   "name": "Deep Silence",
+   "x": 4912.47,
+   "y": -1976.66,
+   "z": -149.43
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFA95002_aa4172282002eb17_1843830593",
+   "world": "voyageworld2",
+   "ident": "DoverGrave",
+   "key": "Location_Grave_Dover",
+   "name": "Dover Grave",
+   "x": 13614.8,
+   "y": 3538.11,
+   "z": -123.39
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527954602_9d6ba793503a278e_1154020486",
+   "world": "voyageworld2",
+   "ident": "ExodusStation",
+   "key": "Location_ExodusStation",
+   "name": "Exodus Station",
+   "x": 12579.28,
+   "y": 4811.73,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF30A602_653b10c446b484b3_1498366516",
+   "world": "voyageworld2",
+   "ident": "Cave03",
+   "key": "Location_Cave3",
+   "name": "Far Horizon",
+   "x": 13387.64,
+   "y": 5479.41,
+   "z": -150.96
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF2DA602_790e76919239766a_1229661675",
+   "world": "voyageworld2",
+   "ident": "Cave01",
+   "key": "location_Cave1",
+   "name": "First Whisper",
+   "x": 905.75,
+   "y": 557.69,
+   "z": -89.9
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF2FA602_d464ba04b1829a9e_1705426220",
+   "world": "voyageworld2",
+   "ident": "Cave02",
+   "key": "Location_Cave2",
+   "name": "Grey Mouth",
+   "x": 11026.42,
+   "y": 424.07,
+   "z": -203.31
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_82ae118b5c823edc_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformA",
+   "key": "",
+   "name": "Gyrocopyter Platform A",
+   "x": 4154.22,
+   "y": 1500.8,
+   "z": 2.63
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55289D602_49e36b6864db77b0_1224430690",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformB",
+   "key": "",
+   "name": "Gyrocopyter Platform B",
+   "x": 6193.72,
+   "y": -5212.31,
+   "z": 1.51
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55289D602_d6b6f38843712a0f_1247478694",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformC",
+   "key": "",
+   "name": "Gyrocopyter Platform C",
+   "x": 13080.98,
+   "y": 3034.8,
+   "z": 1.51
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_0ce8faf7188d986c_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformD",
+   "key": "",
+   "name": "Gyrocopyter Platform D",
+   "x": 6299.74,
+   "y": 12951.18,
+   "z": 34.01
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_7ae788447efe439d_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformD",
+   "key": "",
+   "name": "Gyrocopyter Platform D",
+   "x": 18284.77,
+   "y": 1516.17,
+   "z": 36.6
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_a4ca8e0040b9b7cd_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformD",
+   "key": "",
+   "name": "Gyrocopyter Platform D",
+   "x": 7734.27,
+   "y": -1492.77,
+   "z": 1.81
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_c212b0b681625043_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformD",
+   "key": "",
+   "name": "Gyrocopyter Platform D",
+   "x": -1493.87,
+   "y": -903.23,
+   "z": 36.01
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_f3ba6e61aff2a250_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformD",
+   "key": "",
+   "name": "Gyrocopyter Platform D",
+   "x": 11017.13,
+   "y": 5784.77,
+   "z": 41.01
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552F0F602_dd11c8bcd2a64ee4_1336933924",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformD",
+   "key": "",
+   "name": "Gyrocopyter Platform D",
+   "x": 15506.83,
+   "y": -4127.24,
+   "z": 19.13
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_f76c04decb5728c0_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformE",
+   "key": "",
+   "name": "Gyrocopyter Platform E",
+   "x": 8014.04,
+   "y": 6048.85,
+   "z": 1.81
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_310ddec34cacf7c1_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformF",
+   "key": "",
+   "name": "Gyrocopyter Platform F",
+   "x": 9015.46,
+   "y": -4263.18,
+   "z": 1.81
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_05dd7de277e667b5_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformG",
+   "key": "",
+   "name": "Gyrocopyter Platform G",
+   "x": 13475.59,
+   "y": -1503.45,
+   "z": 1.81
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_48a1353fc2253525_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformH",
+   "key": "",
+   "name": "Gyrocopyter Platform H",
+   "x": 1210.82,
+   "y": 3272.66,
+   "z": -0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55288D602_8ba90c565cca9bb3_1774574493",
+   "world": "voyageworld2",
+   "ident": "GyrocopyterPlatformH",
+   "key": "",
+   "name": "Gyrocopyter Platform H",
+   "x": 1544.23,
+   "y": -4343.87,
+   "z": 3.01
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_ed047120b6bc37a2_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode01",
+   "key": "Location_HabitatNode_01",
+   "name": "Habitat Node 01-2.5",
+   "x": 6834.9,
+   "y": -7761.47,
+   "z": 12.26
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF255F02_da79ce483fc42b8b_1133161588",
+   "world": "voyageworld2",
+   "ident": "HabitatNode02",
+   "key": "Location_HabitatNode_02",
+   "name": "Habitat Node 02-23",
+   "x": 4792.29,
+   "y": -4813.76,
+   "z": 12.49
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_8c6fa907756f2974_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode03",
+   "key": "Location_HabitatNode_03",
+   "name": "Habitat Node 03-12.3",
+   "x": 9781.22,
+   "y": 1550.08,
+   "z": 5.39
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_907655d327455023_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode04",
+   "key": "Location_HabitatNode_04",
+   "name": "Habitat Node 04-7",
+   "x": 8259.96,
+   "y": -1417.38,
+   "z": 6.09
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_f308d01082191d3e_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode-05-14.5",
+   "key": "Location_HabitatNode_05",
+   "name": "Habitat Node 05-14.5",
+   "x": 9139.21,
+   "y": -5656.81,
+   "z": -2.73
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFD5A002_5b42bb8564f2a0ad_2136681275",
+   "world": "voyageworld2",
+   "ident": "HabitatNode06",
+   "key": "Location_HabitatNode_06",
+   "name": "Habitat Node 06-3.5",
+   "x": 2349.81,
+   "y": 444.21,
+   "z": -0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_5312c663cb792471_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode08",
+   "key": "Location_HabitatNode_08",
+   "name": "Habitat Node 08-16",
+   "x": 13040.88,
+   "y": 2143.85,
+   "z": 5.29
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_1cb125222f39a3b4_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode09",
+   "key": "Location_HabitatNode_09",
+   "name": "Habitat Node 09-4",
+   "x": 8240.89,
+   "y": 1629.63,
+   "z": 4.09
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF255F02_7e026591c5fdc170_1133161588",
+   "world": "voyageworld2",
+   "ident": "HabitatNode10",
+   "key": "Location_HabitatNode_10",
+   "name": "Habitat Node 10-4",
+   "x": 3077.63,
+   "y": -3059.48,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF245F02_9d83ca703b65b2b7_1967805410",
+   "world": "voyageworld2",
+   "ident": "HabitatNode14",
+   "key": "Location_HabitatNode_14",
+   "name": "Habitat Node 14-7",
+   "x": 10407.19,
+   "y": 5041.53,
+   "z": 5.64
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF81A502_440f903c7c3cdac4_1892864931",
+   "world": "voyageworld2",
+   "ident": "HabitatNode-38-98",
+   "key": "B12040B844C4AF4F7CD5E09C4C71F550",
+   "name": "Habitat Node-38-98",
+   "x": 856.85,
+   "y": -3711.53,
+   "z": -0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF3F6E02_9930680238832435_1609570770",
+   "world": "voyageworld2",
+   "ident": "HamptonGrave",
+   "key": "Location_Grave_Hampton",
+   "name": "Hampton Grave",
+   "x": 10236.5,
+   "y": 1932.47,
+   "z": -133.93
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527934602_3cd36337e01d8f32_1291305361",
+   "world": "voyageworld2",
+   "ident": "HeliosReserveD",
+   "key": "Location_HeliosReserve_Draco",
+   "name": "Helios Reserve Draco",
+   "x": 6233.04,
+   "y": -6307.84,
+   "z": -0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527934602_5f81477c61bfc72b_1381489411",
+   "world": "voyageworld2",
+   "ident": "HeliosReserveC",
+   "key": "Location_HeliosReserve_Gemini",
+   "name": "Helios Reserve Gemini",
+   "x": 6097.68,
+   "y": -2575.43,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527934602_c44bdfaf37a19360_1207281285",
+   "world": "voyageworld2",
+   "ident": "HeliosReserve24",
+   "key": "Location_HeliosReserve_Lyra",
+   "name": "Helios Reserve Lyra",
+   "x": 12060.57,
+   "y": 2912.67,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527934602_c5ed5bb5ab56d3c8_1137085177",
+   "world": "voyageworld2",
+   "ident": "HeliosReserveA",
+   "key": "Location_HeliosReserve_Orion",
+   "name": "Helios Reserve Orion",
+   "x": 5311.0,
+   "y": 981.36,
+   "z": 9.88
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527B04502_7f6d9285609602c5_1634699011",
+   "world": "voyageworld2",
+   "ident": "LazarusComplex",
+   "key": "Location_LazarusComplex",
+   "name": "Lazarus Complex",
+   "x": 6954.88,
+   "y": -166.87,
+   "z": 7.38
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFAA5002_21606da3d98d5c83_1412473781",
+   "world": "voyageworld2",
+   "ident": "LincolnGrave",
+   "key": "Location_Grave_Lincoln",
+   "name": "Lincoln Grave",
+   "x": 8080.94,
+   "y": 408.66,
+   "z": -79.79
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A5528FD602_cbb4d8867c79ecc1_1114596065",
+   "world": "voyageworld2",
+   "ident": "SiloA",
+   "key": "Location_Silo_A",
+   "name": "MCV-12 Eternal Flame",
+   "x": 8809.34,
+   "y": 4762.45,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F54CEF3906BD802_f7766d1b9f4ff2d7_1666088682",
+   "world": "voyageworld2",
+   "ident": "SiloB",
+   "key": "Location_Silo_B",
+   "name": "MCV-17 Dead Breath",
+   "x": 7344.01,
+   "y": -7414.75,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527BB4502_eda9ab675849f36c_1632420939",
+   "world": "voyageworld2",
+   "ident": "NavigationBeacon15",
+   "key": "Location_NavigationBeacon_15",
+   "name": "Navigation Beacon 15",
+   "x": 6923.25,
+   "y": -5254.14,
+   "z": 8.1
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527BA4502_5aed558b5751e4d3_2082901198",
+   "world": "voyageworld2",
+   "ident": "NavigationBeacon32",
+   "key": "Location_NavigationBeacon_32",
+   "name": "Navigation Beacon 32",
+   "x": 10902.44,
+   "y": 3567.88,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527BB4502_ec14bdcf4d40dc89_1254186590",
+   "world": "voyageworld2",
+   "ident": "NavigationBeacon49",
+   "key": "Location_NavigationBeacon_49",
+   "name": "Navigation Beacon 49",
+   "x": 3376.9,
+   "y": 664.9,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_27d6b6d21e4991eb_1883413650",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer03",
+   "key": "Growth_Container_3",
+   "name": "NDNs Node -10,-2",
+   "x": -1040.96,
+   "y": -166.35,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF60A802_04f29860a0b6c1ea_1808273758",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer13",
+   "key": "Growth_Container_13",
+   "name": "NDNs Node -70,-2",
+   "x": -7044.94,
+   "y": -165.63,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_5806dac6cdbe71f3_2135675652",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer05",
+   "key": "Growth_Container_5",
+   "name": "NDNs Node 110,-2",
+   "x": 10954.77,
+   "y": -167.34,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5FA802_f5b9c2f2579953d0_1933498396",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer06",
+   "key": "Growth_Container_6",
+   "name": "NDNs Node 150,-2",
+   "x": 14950.64,
+   "y": -169.26,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_06459845d1e7e6b5_2084728651",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer16",
+   "key": "Growth_Container_16",
+   "name": "NDNs Node 210.-2",
+   "x": 20957.11,
+   "y": -166.74,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_1ea515a8a3751892_1827946649",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer02",
+   "key": "Growth_Container_2",
+   "name": "NDNs Node 30,-2",
+   "x": 2960.34,
+   "y": -166.47,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF59A802_7793348deef755a8_2087375406",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer01",
+   "key": "Growth_Container_1",
+   "name": "NDNs Node 55,-2",
+   "x": 5456.11,
+   "y": -166.83,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_4ac9b6f8ce4076e8_2084728651",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer14",
+   "key": "Growth_Container_14",
+   "name": "NDNs Node 70,-142",
+   "x": 6946.4,
+   "y": -14169.19,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF60A802_1815bd21e8e48964_1977764982",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer07",
+   "key": "Growth_Container_7",
+   "name": "NDNs Node 70,-17",
+   "x": 6956.07,
+   "y": -1666.22,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF61A802_04072e15c7fd3680_1320105555",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer08",
+   "key": "Growth_Container_8",
+   "name": "NDNs Node 70,-42",
+   "x": 6957.5,
+   "y": -4164.55,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF61A802_3db58d60e2c38756_1510478817",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer09",
+   "key": "Growth_Container_9",
+   "name": "NDNs Node 70,-82",
+   "x": 6956.87,
+   "y": -8165.72,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_94bf4228586fdba4_1827946649",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer15",
+   "key": "Growth_Container_15",
+   "name": "NDNs Node 70,138",
+   "x": 6951.43,
+   "y": 13833.05,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF61A802_ee000f5a246a49c6_1757962196",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer10",
+   "key": "Growth_Container_10",
+   "name": "NDNs Node 70,14",
+   "x": 6955.05,
+   "y": 1332.64,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF60A802_e6fd6838b8bdba0d_1808273758",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer11",
+   "key": "Growth_Container_11",
+   "name": "NDNs Node 70,38",
+   "x": 6953.12,
+   "y": 3830.13,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF61A802_8dc2980d167cc7a6_1182292361",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer12",
+   "key": "Growth_Container_12",
+   "name": "NDNs Node 70,78",
+   "x": 6953.87,
+   "y": 7831.31,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5BA802_1ec8eaf46ed6e873_2084728651",
+   "world": "voyageworld2",
+   "ident": "GrowthContainer04",
+   "key": "Growth_Container_4",
+   "name": "NDNs Node 84,-2",
+   "x": 8453.54,
+   "y": -166.23,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527924602_732d9cef22f5e668_1210312685",
+   "world": "voyageworld2",
+   "ident": "NomadsTower",
+   "key": "Location_NomadsTower",
+   "name": "Nomads Tower",
+   "x": 7423.07,
+   "y": -3064.76,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF3F6E02_4bd8921c9fb06eef_1410360626",
+   "world": "voyageworld2",
+   "ident": "NorfolkGrave",
+   "key": "Location_Grave_Norfolk",
+   "name": "Norfolk Grave",
+   "x": 5913.92,
+   "y": -4078.03,
+   "z": -37.97
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552120503_c651fe3b9d070afb_1866108769",
+   "world": "voyageworld2",
+   "ident": "NorthBastion",
+   "key": "North_Bastion_Snow_Biome",
+   "name": "North Bastion",
+   "x": 5444.92,
+   "y": -101899.85,
+   "z": 0.8
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552110503_ddbacccfb97bbb92_2099208223",
+   "world": "voyageworld2",
+   "ident": "ArchSnowBiome",
+   "key": "Portal_SnowBiome",
+   "name": "North Bastion Transfer Gate",
+   "x": 5343.38,
+   "y": -101149.9,
+   "z": 0.8
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552FCF602_8aefd322ff51d62c_1210217684",
+   "world": "voyageworld2",
+   "ident": "Aron_Station",
+   "key": "Aron_Station",
+   "name": "North Deep Intake Station",
+   "x": 6581.99,
+   "y": -13602.26,
+   "z": 2.46
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF30A602_c2ac8c5058d3d567_1579182517",
+   "world": "voyageworld2",
+   "ident": "Cave04",
+   "key": "Location_Cave4",
+   "name": "North Lantern",
+   "x": 5504.97,
+   "y": -8162.25,
+   "z": -99.7
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A55279E302_e059fbbd5cb0e164_1472054508",
+   "world": "voyageworld2",
+   "ident": "EdenPishon",
+   "key": "Eden_Pishon",
+   "name": "Pishon",
+   "x": 12566.23,
+   "y": -215.86,
+   "z": -0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552F1C402_6275bbee663ff159_1392900160",
+   "world": "voyageworld2",
+   "ident": "Platform_Omega",
+   "key": "Location_Platform_Omega",
+   "name": "Platform Omega",
+   "x": 8917.65,
+   "y": 597.76,
+   "z": 1.9
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_38FC98EE3D0AA4B902_16290bcfe0c0a141_1465131547",
+   "world": "voyageworld2",
+   "ident": "QuarantineStackAmen",
+   "key": "Location_QuarantineStack_Amen",
+   "name": "Quarantine Stack Amen",
+   "x": 14676.38,
+   "y": -3807.86,
+   "z": 3.08
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_38FC98EE3D0AA4B902_0d28f7b336d61e30_1849484639",
+   "world": "voyageworld2",
+   "ident": "QuarantineStackAurora",
+   "key": "Location_QuarantineStack_Aurora",
+   "name": "Quarantine Stack Aurora",
+   "x": 15997.0,
+   "y": -3780.26,
+   "z": -0.15
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_38FC98EE3D0AA4B902_ba91bae4bef11efe_1903116640",
+   "world": "voyageworld2",
+   "ident": "QuarantineStackChorus",
+   "key": "Location_QuarantineStack_Chorus",
+   "name": "Quarantine Stack Chorus",
+   "x": 14601.32,
+   "y": -3152.77,
+   "z": 0.55
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_38FC98EE3D0AA4B902_cfe0150f48767eab_1690081638",
+   "world": "voyageworld2",
+   "ident": "QuarantineStackDawn",
+   "key": "Location_QuarantineStack_Dawn",
+   "name": "Quarantine Stack Dawn",
+   "x": 14948.58,
+   "y": -4554.18,
+   "z": 0.73
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527914602_c5c3b714338f57f6_1620946213",
+   "world": "voyageworld2",
+   "ident": "RefuelOutpostB",
+   "key": "Location_RefuelOutpost_Delta",
+   "name": "Refuel Outpost Delta",
+   "x": 9210.88,
+   "y": 3923.27,
+   "z": 13.06
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527914602_2b20ab7ed38adb33_1482240076",
+   "world": "voyageworld2",
+   "ident": "RefuelOutpostA",
+   "key": "Location_RefuelOutpost_Gamma",
+   "name": "Refuel Outpost Gamma",
+   "x": 4734.84,
+   "y": -598.54,
+   "z": 11.88
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527934602_9528be11726ee00e_1455834511",
+   "world": "voyageworld2",
+   "ident": "RefuelOutpostC",
+   "key": "Location_RefuelOutpost_Theta",
+   "name": "Refuel Outpost Theta",
+   "x": 8454.36,
+   "y": -4456.82,
+   "z": 11.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A5522DE302_e02461fead0d8893_1307463347",
+   "world": "voyageworld2",
+   "ident": "SubmergedLab",
+   "key": "Submerged_Lab",
+   "name": "Research Outpost Theta-9",
+   "x": 5250.98,
+   "y": -3364.02,
+   "z": -220.59
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFAA5002_16d7ae60eb754043_1248043713",
+   "world": "voyageworld2",
+   "ident": "SalemGrave",
+   "key": "Location_Grave_Salem",
+   "name": "Salem Grave",
+   "x": 10870.16,
+   "y": 5500.53,
+   "z": -130.31
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF0DA202_d865a11be967584f_1809540604",
+   "world": "voyageworld2",
+   "ident": "SanctuaryDock12",
+   "key": "location_Sanctuary_Dock_12",
+   "name": "Sanctuary Dock 12",
+   "x": 8871.49,
+   "y": 2719.82,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527AE4502_1bbf791c380ff3a9_1522247538",
+   "world": "voyageworld2",
+   "ident": "SanctuaryDock37",
+   "key": "Location_SandtuaryDock_37",
+   "name": "Sanctuary Dock 37",
+   "x": 1153.18,
+   "y": 826.62,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF718002_0686b1d4e2761e74_1376416430",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_01",
+   "key": "Location_SeedReserve_01",
+   "name": "Seed Reserve 01",
+   "x": 5933.88,
+   "y": 1103.86,
+   "z": -67.12
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFB88002_1c58813a5c8c56f0_1792614221",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_02",
+   "key": "Location_SeedReserve_02",
+   "name": "Seed Reserve 02",
+   "x": 2872.57,
+   "y": -1142.34,
+   "z": -178.06
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF118102_063f0207537113df_1827940161",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_03",
+   "key": "Location_SeedReserve_03",
+   "name": "Seed Reserve 03",
+   "x": 11830.64,
+   "y": 1393.6,
+   "z": -95.35
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF118102_19c2e86482410fbb_2018199406",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_04",
+   "key": "Location_SeedReserve_04",
+   "name": "Seed Reserve 04",
+   "x": 5715.23,
+   "y": -1310.96,
+   "z": -163.49
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF118102_008659bf477ebdb2_2092579637",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_05",
+   "key": "Location_SeedReserve_05",
+   "name": "Seed Reserve 05",
+   "x": 8056.28,
+   "y": -5098.44,
+   "z": -88.65
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_4d5c69ec0e89b867_1095983038",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_06",
+   "key": "Location_SeedReserve_06",
+   "name": "Seed Reserve 06",
+   "x": 9947.48,
+   "y": -810.19,
+   "z": -77.98
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_42b96c2887a254a7_1177819289",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_07",
+   "key": "Location_SeedReserve_07",
+   "name": "Seed Reserve 07",
+   "x": 11092.96,
+   "y": 5354.97,
+   "z": -305.95
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_f2aa059fbc8497a3_1240516506",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_08",
+   "key": "Location_SeedReserve_08",
+   "name": "Seed Reserve 08",
+   "x": 5742.42,
+   "y": -4021.93,
+   "z": -93.52
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_0d0605c78da85a3b_1333124739",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_09",
+   "key": "Location_SeedReserve_09",
+   "name": "Seed Reserve 09",
+   "x": 1525.8,
+   "y": 1494.37,
+   "z": -67.09
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_0a5802e444afc7bd_1396529990",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_10",
+   "key": "Location_SeedReserve_10",
+   "name": "Seed Reserve 10",
+   "x": 9093.16,
+   "y": 5189.84,
+   "z": -133.35
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_5f15507f717d8009_1726717275",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_11",
+   "key": "Location_SeedReserve_11",
+   "name": "Seed Reserve 11",
+   "x": 7094.05,
+   "y": -6710.64,
+   "z": -138.84
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_d8217835a188e699_1764847534",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_12",
+   "key": "Location_SeedReserve_12",
+   "name": "Seed Reserve 12",
+   "x": 7946.0,
+   "y": -552.32,
+   "z": -87.18
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_a4fe7a12d4e62b32_1796666757",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_13",
+   "key": "Location_SeedReserve_13",
+   "name": "Seed Reserve 13",
+   "x": 5228.85,
+   "y": -5576.42,
+   "z": -85.77
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF128102_86509a39583c92f6_2100770004",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_14",
+   "key": "Location_SeedReserve_14",
+   "name": "Seed Reserve 14",
+   "x": 3998.84,
+   "y": 1719.17,
+   "z": -59.21
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF138102_a4b34deb4602ef2e_1082558463",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_15",
+   "key": "Location_SeedReserve_15",
+   "name": "Seed Reserve 15",
+   "x": 9664.17,
+   "y": 3082.76,
+   "z": -79.16
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF138102_585dd267eba68722_1122436706",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_16",
+   "key": "Location_SeedReserve_16",
+   "name": "Seed Reserve 16",
+   "x": 8716.45,
+   "y": -3546.16,
+   "z": -105.62
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF138102_ce4f3e213cd79350_1159176957",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_17",
+   "key": "Location_SeedReserve_17",
+   "name": "Seed Reserve 17",
+   "x": 4245.29,
+   "y": -2855.26,
+   "z": -71.41
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF138102_cc491562d6a6a517_1187227176",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_18",
+   "key": "Location_SeedReserve_18",
+   "name": "Seed Reserve 18",
+   "x": 9348.39,
+   "y": -7761.8,
+   "z": -108.02
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF138102_20e879bce024bac1_1219825421",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_19",
+   "key": "Location_SeedReserve_19",
+   "name": "Seed Reserve 19",
+   "x": 6629.67,
+   "y": 3317.38,
+   "z": -78.99
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF138102_c79715c10f950450_1253079662",
+   "world": "voyageworld2",
+   "ident": "SeedReserve_20",
+   "key": "Location_SeedReserve_20",
+   "name": "Seed Reserve 20",
+   "x": 12606.49,
+   "y": 3568.93,
+   "z": -84.03
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527AE4502_f86820adfdee7ec1_1985855004",
+   "world": "voyageworld2",
+   "ident": "SeedVaultB",
+   "key": "",
+   "name": "Seed Vault 2",
+   "x": 16655.3,
+   "y": 3402.69,
+   "z": 0.04
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527AE4502_a65708190bb41460_1985855004",
+   "world": "voyageworld2",
+   "ident": "SeedVaultA",
+   "key": "Location_SeedVault_Prometheus",
+   "name": "Seed Vault Prometheus",
+   "x": 8201.61,
+   "y": -6493.43,
+   "z": 7.62
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF30A602_8ee9b92a61cdb4c9_1625153518",
+   "world": "voyageworld2",
+   "ident": "Cave05",
+   "key": "Location_Cave5",
+   "name": "South Echo",
+   "x": 7422.69,
+   "y": 3822.61,
+   "z": -95.45
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552F1C402_8083e75b42477121_1239219882",
+   "world": "voyageworld2",
+   "ident": "Proving_Deck",
+   "key": "Location_Talon_Offshore_Proving_Deck",
+   "name": "Talon Offshore Proving Deck",
+   "x": 9651.38,
+   "y": 5875.67,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF30A602_c13a728917a9fd5a_1579182517",
+   "world": "voyageworld2",
+   "ident": "Cave10",
+   "key": "Location_Cave_10_Loot_Cave",
+   "name": "The Forth Chamber",
+   "x": 10904.73,
+   "y": -3310.19,
+   "z": -151.15
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A527924602_6ca04bae274bdee4_1781840994",
+   "world": "voyageworld2",
+   "ident": "TheLastListener",
+   "key": "Location_HighDepot_Beta",
+   "name": "The Last Listener Station",
+   "x": 11519.52,
+   "y": 1150.33,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A5522DE302_e87c1c8256bd5e6c_1651049441",
+   "world": "voyageworld2",
+   "ident": "Statue_Spire_A",
+   "key": "Statue_Spire_A",
+   "name": "The Spire of Command",
+   "x": 2012.61,
+   "y": 4616.89,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A552E2E102_c38f7c0a9c9112e2_1968771284",
+   "world": "voyageworld2",
+   "ident": "Statue_Spire_B",
+   "key": "Statue_Spire_B",
+   "name": "The Spire of Exodus",
+   "x": 18288.91,
+   "y": -3735.85,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_C87F5407A5522DE302_42516017909fb05f_1607451440",
+   "world": "voyageworld2",
+   "ident": "Statue_Spire_C",
+   "key": "Statue_Spire_C",
+   "name": "The Spire of Industry",
+   "x": 8186.69,
+   "y": -9326.16,
+   "z": 0.0
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF5FA802_64fd9582c515c2dc_1933498396",
+   "world": "voyageworld2",
+   "ident": "Maze1",
+   "key": "Location_Maze_1",
+   "name": "Transposium",
+   "x": 11110.6,
+   "y": 2197.97,
+   "z": 1.53
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF30A602_7c70f20b0feff699_1920586520",
+   "world": "voyageworld2",
+   "ident": "Cave07",
+   "key": "Location_Cave7",
+   "name": "Twin Tide",
+   "x": 11005.02,
+   "y": 2773.07,
+   "z": -109.08
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_38FC98EE3D0A9FB902_a138856d84bcaccb_1849779367",
+   "world": "voyageworld2",
+   "ident": "UnlistedTower",
+   "key": "Location_UnlistedTower",
+   "name": "Unlisted Tower",
+   "x": 11286.88,
+   "y": -2074.46,
+   "z": -0.65
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BFA95002_8f6a0e8a5acf671e_2049621689",
+   "world": "voyageworld2",
+   "ident": "WinstonGrave",
+   "key": "Location_Grave_Winston",
+   "name": "Winston Grave",
+   "x": 2759.47,
+   "y": -1170.88,
+   "z": -127.66
+  },
+  {
+   "actor": "VoyageLocatorActor_UAID_7C10C945F1BF3C4D02_0a956c816aba900c_1397677611",
+   "world": "voyageworld2",
+   "ident": "YorkGrave",
+   "key": "Location_Grave_York",
+   "name": "York Grave",
+   "x": 8538.48,
+   "y": -7414.98,
+   "z": -116.69
+  }
+ ],
+ "errors": []
+}

@@ -1,0 +1,9 @@
+editor_settings.json
+.codex/
+.venv/
+__pycache__/
+*.py[cod]
+*.sav
+*.sav.*
+*.bak
+.pytest_cache/
