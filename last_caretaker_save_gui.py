@@ -279,7 +279,17 @@ def _enable_windows_dpi_awareness() -> None:
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SETTINGS_PATH = SCRIPT_DIR / "editor_settings.json"
+
+
+def _settings_path() -> Path:
+    if getattr(sys, "frozen", False):
+        local_app_data = Path(os.environ.get(
+            "LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return local_app_data / "The Last Caretaker Save Editor" / "editor_settings.json"
+    return SCRIPT_DIR / "editor_settings.json"
+
+
+SETTINGS_PATH = _settings_path()
 PROGRESS_FIELDS = (
     ("PlatformUserIndex", "Platform User Index"),
     ("Level", "Caretaker Level"),
@@ -3009,6 +3019,7 @@ class LastCaretakerEditor(tk.Tk):
 
     def _write_settings(self) -> bool:
         try:
+            SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
             SETTINGS_PATH.write_text(json.dumps(self._current_settings(), indent=2), encoding="utf-8")
         except OSError:
             return False

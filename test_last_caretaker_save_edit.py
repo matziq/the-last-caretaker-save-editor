@@ -72,6 +72,32 @@ class InventoryTypeColorTests(unittest.TestCase):
         self.assertNotEqual(gui.INVENTORY_TYPE_COLORS["ammo"], gui.INVENTORY_TYPE_COLORS["memory"])
 
 
+class FrozenSettingsPathTests(unittest.TestCase):
+    def test_frozen_build_keeps_settings_in_local_app_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.object(gui.sys, "frozen", True, create=True),
+                patch.dict(gui.os.environ, {"LOCALAPPDATA": directory}),
+            ):
+                path = gui._settings_path()
+        self.assertEqual(
+            Path(directory) / "The Last Caretaker Save Editor" / "editor_settings.json",
+            path,
+        )
+
+    def test_source_run_keeps_settings_beside_the_script(self):
+        with patch.object(gui.sys, "frozen", False, create=True):
+            self.assertEqual(gui.SCRIPT_DIR / "editor_settings.json", gui._settings_path())
+
+    def test_settings_write_creates_the_frozen_settings_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "nested" / "editor_settings.json"
+            app = SimpleNamespace(_current_settings=lambda: {"repair_combine": True})
+            with patch.object(gui, "SETTINGS_PATH", path):
+                self.assertTrue(gui.LastCaretakerEditor._write_settings(app))
+            self.assertEqual('{\n  "repair_combine": true\n}', path.read_text(encoding="utf-8"))
+
+
 class CompressionMethodTests(unittest.TestCase):
     @staticmethod
     def _block(payload: bytes, raw_size: int, *, method: int = 2,

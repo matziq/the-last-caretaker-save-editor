@@ -10,6 +10,18 @@ The editor keeps machine-specific preferences in `editor_settings.json`
 beside the application. This file is created locally and is intentionally
 excluded from source control; it can contain a path to your save files.
 
+## Download the Windows executable
+
+Download `TheLastCaretakerSaveEditor.exe` from the latest
+[GitHub release](https://github.com/matziq/the-last-caretaker-save-editor/releases).
+It is a self-contained, 64-bit Windows application; Python and a separate
+Oodle decoder installation are not required. On first run, settings are stored
+in `%LOCALAPPDATA%\The Last Caretaker Save Editor\editor_settings.json`.
+Close the game before editing saves.
+
+Releases are built automatically for version tags (`v*`) using the workflow in
+`.github/workflows/release.yml`.
+
 Newer saves use Oodle/Kraken compression. Install the decoder once with the
 same Python interpreter that `run.bat` selects:
 
