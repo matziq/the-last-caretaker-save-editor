@@ -1,7 +1,6 @@
 # The Last Caretaker Save Editor
 
-A Windows GUI save editor for **The Last Caretaker**, modeled after the
-workspace's Conan Exiles editor.
+A Windows GUI save editor for **The Last Caretaker**.
 
 ## Run
 
