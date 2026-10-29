@@ -12,11 +12,13 @@ excluded from source control; it can contain a path to your save files.
 
 ## Download the Windows executable
 
-Download `TheLastCaretakerSaveEditor.exe` from the latest
-[GitHub release](https://github.com/matziq/the-last-caretaker-save-editor/releases).
-It is a self-contained, 64-bit Windows application; Python and a separate
-Oodle decoder installation are not required. On first run, settings are stored
-in `%LOCALAPPDATA%\The Last Caretaker Save Editor\editor_settings.json`.
+Download the executable matching your Windows architecture from the latest
+[GitHub release](https://github.com/matziq/the-last-caretaker-save-editor/releases):
+`TheLastCaretakerSaveEditor-Win32.exe` is for 32-bit x86 Windows, and
+`TheLastCaretakerSaveEditor-Win64.exe` is for 64-bit x64 Windows. Both are
+self-contained; Python and a separate Oodle decoder installation are not
+required. On first run, settings are stored in
+`%LOCALAPPDATA%\The Last Caretaker Save Editor\editor_settings.json`.
 Close the game before editing saves.
 
 Releases are built automatically for version tags (`v*`) using the workflow in
