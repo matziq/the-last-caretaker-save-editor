@@ -677,6 +677,7 @@ class MapEditorIntegrationTests(unittest.TestCase):
         app.deiconify()
         app.notebook.select(app.map_tab)
         for geometry in ("1360x820", "1040x650"):
+            app.notebook.select(app.map_tab)
             app.geometry(geometry)
             app.update()
             app.map_view.fit_visible()
@@ -694,6 +695,9 @@ class MapEditorIntegrationTests(unittest.TestCase):
                     self.assertLessEqual(y + widget.winfo_height(), height, (geometry, widget))
             self.assertGreater(app.map_view.canvas.winfo_width(), 300)
             self.assertGreater(app.map_view.canvas.winfo_height(), 180)
+            app.notebook.select(app.settings_tab)
+            app.settings_canvas.yview_moveto(1)
+            app.update_idletasks()
             app.map_view.layer_canvas.yview_moveto(1)
             app.update_idletasks()
             last_layer = app.map_view.layer_checks["other"]

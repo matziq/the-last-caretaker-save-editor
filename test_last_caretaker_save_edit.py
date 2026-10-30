@@ -101,14 +101,19 @@ class FrozenSettingsPathTests(unittest.TestCase):
 class SaveSelectionTests(unittest.TestCase):
     def test_open_browses_the_current_users_standard_save_folder(self):
         selected = Path("C:/Users/example/AppData/Local/Voyage/Saved/SaveGames/123/slot.sav")
-        app = SimpleNamespace(_load=Mock())
+        app = SimpleNamespace(_open_save=Mock())
         with patch.object(
             gui.filedialog, "askopenfilename", return_value=str(selected),
         ) as browse:
             gui.LastCaretakerEditor._open(app)
         self.assertEqual("Select a The Last Caretaker save", browse.call_args.kwargs["title"])
         self.assertEqual(editor.DEFAULT_SAVE_ROOT, browse.call_args.kwargs["initialdir"])
-        app._load.assert_called_once_with(selected)
+        app._open_save.assert_called_once_with(selected)
+
+    def test_select_save_runs_user_open_actions(self):
+        app = SimpleNamespace(save_var=SimpleNamespace(get=lambda: "selected.sav"), _open_save=Mock())
+        gui.LastCaretakerEditor._select_save(app)
+        app._open_save.assert_called_once_with(Path("selected.sav"))
 
     def test_refresh_keeps_the_discovered_full_path_and_newest_selection(self):
         newest = Path("C:/Users/example/AppData/Local/Voyage/Saved/SaveGames/123/newest.sav")
@@ -1747,12 +1752,16 @@ class PlayerLockGuiTests(unittest.TestCase):
 
 class StartupBackupGuiTests(unittest.TestCase):
     def _app(self, events: list[str], candidates: list[Path], *, loads: bool = True):
-        return SimpleNamespace(
+        app = SimpleNamespace(
             settings={"last_save": "older.sav"},
             candidates=candidates,
-            _load=lambda path: events.append(f"load:{path}") or loads,
+            auto_load_latest_var=SimpleNamespace(get=lambda: True),
+            repair_on_open_var=SimpleNamespace(get=lambda: False),
+            _load=lambda path, **_kwargs: events.append(f"load:{path}") or loads,
             _create_backup=lambda: events.append("backup"),
         )
+        app._open_save = lambda path, **kwargs: gui.LastCaretakerEditor._open_save(app, path, **kwargs)
+        return app
 
     def test_startup_loads_newest_save_then_backs_up_without_prompt(self) -> None:
         events: list[str] = []
@@ -1774,7 +1783,23 @@ class StartupBackupGuiTests(unittest.TestCase):
         gui.LastCaretakerEditor._load_startup_save(self._app(events, [candidate], loads=False))
         self.assertEqual([f"load:{candidate}"], events)
 
-    def test_startup_opens_maximized_with_carried_view_and_boxes_checked(self) -> None:
+    def test_disabled_auto_load_does_not_open_or_back_up(self) -> None:
+        events: list[str] = []
+        app = self._app(events, [Path("newest.sav")])
+        app.auto_load_latest_var = SimpleNamespace(get=lambda: False)
+        app.status_var = Mock()
+        gui.LastCaretakerEditor._load_startup_save(app)
+        self.assertEqual([], events)
+
+    def test_startup_backup_precedes_automatic_repair(self) -> None:
+        events: list[str] = []
+        app = self._app(events, [Path("newest.sav")])
+        app.repair_on_open_var = SimpleNamespace(get=lambda: True)
+        app._repair_and_top_off = lambda **kwargs: events.append(f"repair:{kwargs['automatic']}")
+        gui.LastCaretakerEditor._load_startup_save(app)
+        self.assertEqual(["load:newest.sav", "backup", "repair:True"], events)
+
+    def test_startup_opens_maximized_with_saved_preferences_and_carried_view(self) -> None:
         settings = {"repair_combine": False, "geometry": "800x600+0+0"}
         calls: list[str] = []
         with (
@@ -1792,7 +1817,9 @@ class StartupBackupGuiTests(unittest.TestCase):
                 self.assertEqual("Carried (all)", app.location_filter.get())
                 self.assertTrue(app.show_empty_items.get())
                 self.assertTrue(app.purge_include_world.get())
-                self.assertTrue(app.repair_combine_var.get())
+                self.assertFalse(app.repair_combine_var.get())
+                self.assertTrue(app.auto_load_latest_var.get())
+                self.assertFalse(app.repair_on_open_var.get())
                 self.assertTrue(app.confirm_purge_var.get())
                 self.assertTrue(app.confirm_repair_var.get())
                 toolbar = app.inventory_tab.winfo_children()[0]
@@ -1811,6 +1838,81 @@ class StartupBackupGuiTests(unittest.TestCase):
                     self.assertEqual(color, style.lookup(expected_style, "background"))
             finally:
                 app.destroy()
+
+
+class OpenSaveAutomationTests(unittest.TestCase):
+    def test_repair_runs_only_after_successful_user_open_when_enabled(self):
+        for enabled, loaded in ((False, True), (True, True), (True, False)):
+            with self.subTest(enabled=enabled, loaded=loaded):
+                events = []
+                app = SimpleNamespace(
+                    _load=lambda *a, **k: events.append("load") or loaded,
+                    repair_on_open_var=SimpleNamespace(get=lambda: enabled),
+                    _repair_and_top_off=lambda **k: events.append(f"repair:{k['automatic']}"),
+                    _create_backup=Mock(),
+                )
+                self.assertEqual(loaded, gui.LastCaretakerEditor._open_save(app, Path("slot.sav")))
+                self.assertEqual(
+                    ["load", "repair:True"] if enabled and loaded else ["load"], events,
+                )
+                app._create_backup.assert_not_called()
+
+    def test_manual_reload_runs_open_actions_after_discard_check(self):
+        for accept in (False, True):
+            with self.subTest(accept=accept):
+                app = SimpleNamespace(
+                    document=SimpleNamespace(path=Path("slot.sav")), pending={1: 2},
+                    status_var=Mock(), _open_save=Mock(),
+                )
+                with patch.object(gui.messagebox, "askyesno", return_value=accept):
+                    gui.LastCaretakerEditor._reload(app, prompt=True)
+                if accept:
+                    app._open_save.assert_called_once_with(Path("slot.sav"), confirm_discard=False)
+                else:
+                    app._open_save.assert_not_called()
+
+    def test_automatic_repair_ignores_selection_and_repair_warning(self):
+        events = []
+        app, item, entry = RepairAndTopOffGuiTests()._editor(events)
+        app._selected_items = Mock(side_effect=AssertionError("Must repair all carried items"))
+        with (
+            patch.object(gui, "_game_is_running", return_value=False),
+            patch.object(gui.messagebox, "askyesno") as prompt,
+            patch.object(gui.save_io, "repair_and_top_off", return_value=[(entry, 999)]) as repair,
+        ):
+            gui.LastCaretakerEditor._repair_and_top_off(app, automatic=True)
+        prompt.assert_not_called()
+        self.assertEqual([item], repair.call_args.args[1])
+        self.assertEqual(["sync", "refresh", "save:False", "combine:False:True"], events)
+
+    def test_automatic_repair_save_failure_stops_deletion_and_combine(self):
+        events = []
+        app, _, entry = RepairAndTopOffGuiTests()._editor(events, save_succeeds=False)
+        app.repair_delete_items = ["Iron"]
+        app._remove_configured_items = Mock()
+        with (
+            patch.object(gui, "_game_is_running", return_value=False),
+            patch.object(gui.messagebox, "askyesno") as prompt,
+            patch.object(gui.save_io, "repair_and_top_off", return_value=[(entry, 999)]),
+        ):
+            gui.LastCaretakerEditor._repair_and_top_off(app, automatic=True)
+        prompt.assert_not_called()
+        app._remove_configured_items.assert_not_called()
+        self.assertEqual(["sync", "refresh", "save:False"], events)
+
+    def test_automatic_repair_does_not_queue_changes_while_game_is_running(self):
+        events = []
+        app, _, _ = RepairAndTopOffGuiTests()._editor(events)
+        with (
+            patch.object(gui, "_game_is_running", return_value=True),
+            patch.object(gui.messagebox, "showerror") as error,
+            patch.object(gui.save_io, "repair_and_top_off") as repair,
+        ):
+            gui.LastCaretakerEditor._repair_and_top_off(app, automatic=True)
+        repair.assert_not_called()
+        error.assert_called_once()
+        self.assertEqual({}, app.pending)
+        self.assertEqual([], events)
 
 
 class StaleReloadTests(unittest.TestCase):
@@ -3008,6 +3110,161 @@ class ResponsiveGuiTests(unittest.TestCase):
                 texts.append(widget.cget("text"))
         self.assertIn("Save file on this PC:", texts)
         self.assertIn("Browse...", texts)
+
+    def test_all_checkboxes_and_configuration_controls_are_in_settings(self) -> None:
+        app = self.app
+        self.assertIn("Settings", [app.notebook.tab(tab, "text") for tab in app.notebook.tabs()])
+        pending = list(app.winfo_children())
+        checkboxes = []
+        configuration = []
+        while pending:
+            widget = pending.pop()
+            pending.extend(widget.winfo_children())
+            if isinstance(widget, gui.ttk.Checkbutton):
+                checkboxes.append(widget)
+            if isinstance(widget, gui.ttk.Spinbox) or (
+                isinstance(widget, gui.ttk.Button)
+                and widget.cget("text") in ("Stack Targets...", "Delete Items...")
+            ):
+                configuration.append(widget)
+        self.assertGreater(len(checkboxes), 12)
+        self.assertEqual(3, len(configuration))
+        for widget in checkboxes + configuration:
+            self.assertTrue(str(widget).startswith(str(app.settings_tab) + "."), widget)
+
+    def test_settings_changes_are_saved_immediately_and_loaded_next_launch(self) -> None:
+        app = self.app
+        with tempfile.TemporaryDirectory() as folder, patch.object(
+            gui, "SETTINGS_PATH", Path(folder) / "settings.json",
+        ):
+            pending = list(app.settings_tab.winfo_children())
+            checkboxes = {}
+            while pending:
+                widget = pending.pop()
+                pending.extend(widget.winfo_children())
+                if isinstance(widget, gui.ttk.Checkbutton):
+                    checkboxes[widget.cget("text")] = widget
+            checkboxes["Auto Load Latest Save"].invoke()
+            checkboxes["Repair and Top Off On Open"].invoke()
+            checkboxes["Combine duplicate carried stacks"].invoke()
+            checkboxes["Show zero-count catalog"].invoke()
+            checkboxes["Include environment/world in Purge"].invoke()
+            app.map_view.layer_checks["player"].invoke()
+            saved = gui._load_settings()
+            for key, expected in (
+                ("auto_load_latest_save", False), ("repair_on_open", True),
+                ("repair_combine", False), ("show_empty_items", False),
+                ("purge_include_world", False),
+            ):
+                self.assertIs(saved[key], expected)
+            self.assertFalse(saved["map_layers"]["player"])
+            with (
+                patch.object(gui.LastCaretakerEditor, "_refresh_saves"),
+                patch.object(gui.LastCaretakerEditor, "_load_startup_save"),
+                patch.object(gui.LastCaretakerEditor, "_open_full_screen"),
+            ):
+                restored = gui.LastCaretakerEditor()
+            try:
+                self.assertFalse(restored.auto_load_latest_var.get())
+                self.assertTrue(restored.repair_on_open_var.get())
+                self.assertFalse(restored.repair_combine_var.get())
+                self.assertFalse(restored.show_empty_items.get())
+                self.assertFalse(restored.purge_include_world.get())
+                self.assertFalse(restored.map_view.layer_vars["player"].get())
+            finally:
+                restored.destroy()
+
+    def test_settings_write_failure_and_invalid_count_are_reported(self) -> None:
+        app = self.app
+        with (
+            patch.object(app, "_write_settings", return_value=False),
+            patch.object(gui.messagebox, "showerror") as error,
+        ):
+            self.assertFalse(app._save_preferences())
+            error.assert_called_once_with("Settings failed", "Could not save editor settings.")
+        app.keep_var.set("invalid")
+        with tempfile.TemporaryDirectory() as folder, patch.object(
+            gui, "SETTINGS_PATH", Path(folder) / "settings.json",
+        ), patch.object(gui.messagebox, "showerror") as error:
+            self.assertFalse(app._save_preferences())
+            self.assertIn("Settings > Backups", error.call_args.args[1])
+        app.keep_var.set(20)
+
+    def test_on_open_repair_writes_synthetic_save_once_without_recursive_repairs(self) -> None:
+        app = self.app
+        app.repair_on_open_var.set(True)
+        app.repair_combine_var.set(False)
+        app.refill_storage_var.set(False)
+        with tempfile.TemporaryDirectory() as folder:
+            path = self._synthetic_save(folder)
+            before = path.read_bytes()
+            with (
+                patch.object(gui, "_game_is_running", return_value=False),
+                patch.object(gui.messagebox, "askyesno") as prompt,
+                patch.object(app, "_repair_and_top_off", wraps=app._repair_and_top_off) as repair,
+                patch.object(gui.save_io, "save_changes", wraps=gui.save_io.save_changes) as save,
+            ):
+                self.assertTrue(app._open_save(path))
+            prompt.assert_not_called()
+            repair.assert_called_once_with(automatic=True)
+            save.assert_called_once()
+            self.assertNotEqual(before, path.read_bytes())
+            self.assertEqual({}, app.pending)
+            reloaded = editor.load_save(path)
+            carried = [item for item in reloaded.items if editor.is_carried(item.location) and item.count > 0]
+            self.assertTrue(carried)
+            for item in carried:
+                self.assertEqual(
+                    editor.repair_stack_target(item.asset, item.category, True, app.repair_targets),
+                    item.count,
+                )
+
+    def test_settings_controls_fit_default_and_minimum_window_sizes(self) -> None:
+        app = self.app
+        app.deiconify()
+        app.notebook.select(app.settings_tab)
+        for size in ("1360x820", "1040x680"):
+            app.geometry(size)
+            app.update()
+            for offset in (0, 1):
+                app.settings_canvas.yview_moveto(offset)
+                app.update()
+                pending = list(app.settings_content.winfo_children())
+                while pending:
+                    widget = pending.pop()
+                    pending.extend(widget.winfo_children())
+                    if isinstance(widget, (gui.ttk.Checkbutton, gui.ttk.Spinbox, gui.ttk.Button)):
+                        self.assertGreaterEqual(widget.winfo_rootx(), app.winfo_rootx(), (size, widget))
+                        self.assertLessEqual(
+                            widget.winfo_rootx() + widget.winfo_width(),
+                            app.winfo_rootx() + app.winfo_width(), (size, widget),
+                        )
+            self.assertGreater(app.settings_canvas.yview()[0], 0)
+
+    def test_on_open_combine_writes_structure_without_repeating_repair(self) -> None:
+        app = self.app
+        app.repair_on_open_var.set(True)
+        app.refill_storage_var.set(False)
+        raw = AutoSaveLayoutTests()._scenario(backpack=[("Food Ration", 5), ("Food Ration", 2)])
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "duplicates.sav"
+            path.write_bytes(editor.compress_container(raw))
+            with (
+                patch.object(gui, "_game_is_running", return_value=False),
+                patch.object(gui.messagebox, "askyesno") as prompt,
+                patch.object(app, "_repair_and_top_off", wraps=app._repair_and_top_off) as repair,
+                patch.object(gui.save_io, "save_changes", wraps=gui.save_io.save_changes) as save,
+                patch.object(gui.save_io, "purge_items", wraps=gui.save_io.purge_items) as purge,
+            ):
+                self.assertTrue(app._open_save(path))
+            prompt.assert_not_called()
+            repair.assert_called_once_with(automatic=True)
+            save.assert_called_once()
+            purge.assert_called_once()
+            carried = [item for item in editor.load_save(path).items
+                       if editor.is_carried(item.location) and item.asset == "Food Ration"]
+            self.assertEqual(1, len(carried))
+            self.assertEqual(editor.repair_stack_target("Food Ration", "", True), carried[0].count)
 
     def _blocked(self) -> bool:
         app = self.app

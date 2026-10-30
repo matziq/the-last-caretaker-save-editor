@@ -40,7 +40,9 @@ account's standard game-save folder:
 
 `%LOCALAPPDATA%\Voyage\Saved\SaveGames\<SteamId>\<SteamId>_<slot>.sav`
 
-It loads the most recently modified save it finds. The **Save file on this
+With **Settings > Auto Load Latest Save** enabled (the default), it loads the
+most recently modified save it finds. Disable this option to start without
+loading a save; discovery still fills the save selector. The **Save file on this
 PC** selector shows the full path, and **Browse...** opens this PC's standard
 save folder so you can select a different save. Use **Refresh** to rescan.
 No Windows username or save path is bundled with the application. You can also
@@ -48,7 +50,22 @@ browse to any compatible `.sav` manually.
 
 ## Features
 
-- Top-bar **Warn before Purge**, **Warn before Repair & Top Off**, and
+- **Settings** centralizes all checkboxes and options: startup behavior,
+  warnings, Repair & Top Off stack targets and deletion rules, inventory display,
+  Purge scope, backup retention, player locks, and map layers. Preferences persist
+  when changed; player locks reflect and edit the loaded save rather than being
+  global defaults.
+- **Repair and Top Off On Open** in Settings is off by default. When enabled,
+  successfully opening a save at launch, choosing one in the selector, using
+  **Browse...**, or manually reloading runs Repair & Top Off and saves immediately.
+  It repairs all carried items regardless of the previous selection and uses the
+  configured stack targets, storage refill, deletion list, and Combine option.
+  The ordinary repair confirmation is skipped; configured-deletion confirmations
+  still follow **Warn before Delete**. Failed/canceled loads do not run it, and
+  internal reloads after writes do not trigger it again. The game must be closed.
+  If the first save fails, configured deletion and combining do not run.
+  At startup, the existing startup backup is created before automatic repair.
+- Settings **Warn before saving**, **Warn before Purge**, **Warn before Repair & Top Off**, and
   **Warn before Delete** checkboxes (Delete covers Delete Selected and the
   configured Delete Items step of Repair & Top Off; declining the latter skips
   only the deletion) let you disable those confirmations independently. All default to
@@ -56,7 +73,7 @@ browse to any compatible `.sav` manually.
   stale-save checks, and unsaved-edit safeguards remain active.
 - **Progress**: edit the caretaker level, experience, level-cap experience,
   security level, player health values, collected pods and rockets, traveled
-  distance, world time, and playtime when present. **Infinite Health** /
+  distance, world time, and playtime when present. Settings **Infinite Health** /
   **Infinite Energy** checkboxes toggle trainer-style locks — see
   [Infinite health and energy](#infinite-health-and-energy-trainer-locks).
 - **Mark Blueprints Scanned** (experimental): adds scan records for blueprints
@@ -150,8 +167,8 @@ browse to any compatible `.sav` manually.
   `Resources.Electricity` **60000**, `Resources.Methane` **3000**, and
   `Resources.Oxygen` **12000**. Its other resources and condition fields, and
   all other hidden UAID actors, are unchanged.
-  The repair is written immediately; when the adjacent **Combine**
-  checkbox is enabled (the default), duplicate carried stacks are then
+  The repair is written immediately; when **Settings > Combine duplicate carried
+  stacks** is enabled (the default), duplicate carried stacks are then
   combined automatically and that change is written separately. **Remove Duplicate
   Stacks** finds carried items split across two or more redundant stacks of
   the same asset (and variation, if any) — e.g. three separate 999 stacks of
@@ -222,7 +239,7 @@ browse to any compatible `.sav` manually.
   Health is restored to the highest value the save records for that item
   (minimum 100).
 
-  **Stack Targets...** (next to Repair & Top Off) opens a scrollable window
+  **Settings > Stack Targets...** opens a scrollable window
   that sets the count Repair & Top Off uses for every category and
   subcategory: Weapons (Guns & Tools; Grenades → Big Petrol, Other Grenades;
   loose Attachments), Ammo, Memory, Food, Cartridges, Resources (Materials, Parts, Cables,
@@ -309,14 +326,14 @@ browse to any compatible `.sav` manually.
   `IntProperty`, `FloatProperty`, `DoubleProperty`, and `BoolProperty` values.
 - **Backups**: after the initial save loads successfully at startup, the
   editor automatically creates a timestamped `.bak` restore point (no prompt),
-  using the current **Keep backups** count. Nothing is backed up if no save
+  using the current **Settings > Backups > Keep backups** count. Nothing is backed up if no save
   loads; reloads and saves opened later do not create one automatically.
   Ordinary saves and immediate structural removals do not create backups.
   Saves that include human profession or stat changes, and experimental blueprint
   scanning, create a backup before writing. Use
   **Create Backup Now** in the Backups tab whenever you want another restore
   point. Backups can be listed, pruned, and restored from the GUI.
-- **On launch** the editor opens maximized (full screen), loads the most
+- **On launch** the editor opens maximized (full screen). By default, it loads the most
   recently modified discovered save (regardless of which save was open last
   session), and backs it up. That is often the game's own
   `..._AutoSave_0.sav`, which is much larger than a manual slot (about 146 MB
@@ -324,14 +341,15 @@ browse to any compatible `.sav` manually.
   window stays responsive and the footer names each stage (see
   [Keeping the window responsive](#keeping-the-window-responsive)). The
   Inventory tab starts on the **Carried (all)**
-  location with **Show zero-count catalog**, **Include environment/world**, and
-  **Combine** all checked. Use the save selector or **Open...** to switch saves.
+  location. Settings **Show zero-count catalog**, **Include environment/world in Purge**, and
+  **Combine duplicate carried stacks** default to checked and remember your choices.
+  Use the save selector or **Browse...** to switch saves.
 - Ordinary scalar edits and queued human professions/stats stay pending until
   **Save Changes** is clicked; the maintenance actions described above save
   immediately.
   The editor refuses to
   write while the game process is running and detects saves changed on disk.
-  The **"Warn before saving"** checkbox next to Save Changes controls whether
+  The **Settings > Warn before saving** checkbox controls whether
   a confirmation dialog appears each time; unchecking it (remembered between
   runs) makes Save Changes write immediately. Saves that include human
   profession or stat changes always ask first.
@@ -377,9 +395,9 @@ positions, **not terrain, coastlines, routes, or every object in the game**.
 No game installation or network connection is required.
 
 **Player**, **Humans in pods**, and **Named locations** are enabled initially.
-Layer checkboxes also
+Layer checkboxes in **Settings > Map layers** also
 show other human pods, functional rockets, checkpoints, containers/crates, and
-other saved actors. The **Layers** panel scrolls when the window is short.
+other saved actors. The layer list scrolls and remembers enabled layers between launches.
 A pod without a grown human may still contain a seed;
 that layer does not assert that every pod is completely empty. Counts beside
 the layers describe the selected world's available objects.
@@ -509,7 +527,7 @@ converted in-game values: height, strength and life-expectancy fields may hold
 growth points rather than physical units. No age formula or stat limits are
 guessed, and timestamps remain read-only.
 
-**Save Changes** (on the Humans tab or beside **Warn before saving**) writes
+**Save Changes** (on the Humans tab or in the top toolbar) writes
 every queued profession and stat, together with any pending scalar edits, in
 **one** verified write. Each queued profession change replaces **all** profession traits for that
 human with the chosen single profession. Choose **(No profession)** to clear
@@ -519,7 +537,7 @@ and other non-profession traits are preserved.
 
 Close the game first. A save that includes human profession or stat changes always asks for
 confirmation, independently of **Warn before saving**, and lists the changes.
-The editor creates a backup using **Backups > Keep backups**, writes, and
+The editor creates a backup using **Settings > Backups > Keep backups**, writes, and
 reloads the save. If the write fails, the save file is left unchanged and the
 queue is kept so you can retry. Queued changes that already match the save do not
 rewrite the file or create a backup. Stale files, malformed human data, and
@@ -767,7 +785,7 @@ points (above) are the real fix:
 - **Repair & Top Off** refills carried items to their normal stack rule
   (materials/parts/cables/ammo to 999), and never tops off anything the
   player is not carrying — those records are instead compacted to a stack
-  of 1. The repair is saved immediately. When its **Combine** checkbox is
+  of 1. The repair is saved immediately. When **Settings > Combine duplicate carried stacks** is
   enabled (the default), duplicate carried stacks are then combined and that
   structural change is saved separately.
 - **Set Count...** lets you set an exact count on any selected record(s),
@@ -838,7 +856,7 @@ integer caretaker level).
 | Energy (`Level`) | Min 0, Max 100, Default 1, Value 100 | Min 200 > Max 100, Default = Value = 200 |
 
 An attribute counts as locked when its minimum is at or above both its
-maximum and current value. The Progress tab shows **Infinite Health** and
+maximum and current value. **Settings > Player locks** shows **Infinite Health** and
 **Infinite Energy** checkboxes reflecting the loaded save; ticking or
 unticking one asks for confirmation, backs up, writes those four floats in
 place (same width, no structural change), and reloads. Close the game and

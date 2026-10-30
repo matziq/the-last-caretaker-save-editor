@@ -538,22 +538,6 @@ class LastCaretakerEditor(tk.Tk):
         ttk.Button(actions, text="Browse...", command=self._open).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Save Changes", command=self._save).pack(side=tk.LEFT, padx=(10, 2))
         ttk.Button(actions, text="Reload", command=lambda: self._reload(prompt=True)).pack(side=tk.LEFT, padx=2)
-        self.confirm_save_var = tk.BooleanVar(value=bool(self.settings.get("confirm_save", True)))
-        ttk.Checkbutton(
-            actions, text="Warn before saving", variable=self.confirm_save_var,
-        ).pack(side=tk.LEFT, padx=(10, 2))
-        self.confirm_purge_var = tk.BooleanVar(value=bool(self.settings.get("confirm_purge", True)))
-        ttk.Checkbutton(
-            actions, text="Warn before Purge", variable=self.confirm_purge_var,
-        ).pack(side=tk.LEFT, padx=(10, 2))
-        self.confirm_repair_var = tk.BooleanVar(value=bool(self.settings.get("confirm_repair", True)))
-        ttk.Checkbutton(
-            actions, text="Warn before Repair & Top Off", variable=self.confirm_repair_var,
-        ).pack(side=tk.LEFT, padx=(10, 2))
-        self.confirm_delete_var = tk.BooleanVar(value=bool(self.settings.get("confirm_delete", True)))
-        ttk.Checkbutton(
-            actions, text="Warn before Delete", variable=self.confirm_delete_var,
-        ).pack(side=tk.LEFT, padx=(10, 2))
 
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=8)
@@ -564,6 +548,7 @@ class LastCaretakerEditor(tk.Tk):
         self.scalars_tab = ttk.Frame(self.notebook, padding=8)
         self.resources_tab = ttk.Frame(self.notebook, padding=8)
         self.backups_tab = ttk.Frame(self.notebook, padding=8)
+        self.settings_tab = ttk.Frame(self.notebook, padding=8)
         self.notebook.add(self.progress_tab, text="Progress")
         self.notebook.add(self.inventory_tab, text="Inventory")
         self.notebook.add(self.humans_tab, text="Humans")
@@ -571,6 +556,8 @@ class LastCaretakerEditor(tk.Tk):
         self.notebook.add(self.resources_tab, text="Container Resources")
         self.notebook.add(self.scalars_tab, text="All Scalars")
         self.notebook.add(self.backups_tab, text="Backups")
+        self.notebook.add(self.settings_tab, text="Settings")
+        self._build_settings()
         self._build_progress()
         self._build_inventory()
         self._build_humans()
@@ -578,12 +565,16 @@ class LastCaretakerEditor(tk.Tk):
             self.map_tab, reload_map=lambda: self._load_map(force=True),
             matches_filter=self._matches_filter,
             move_selected=self._move_selected_map_object,
+            layer_parent=self.map_settings,
+            layer_settings=self.settings.get("map_layers", {}),
+            on_layers_changed=self._save_preferences,
         )
         self.map_view.pack(fill=tk.BOTH, expand=True)
         self.notebook.bind("<<NotebookTabChanged>>", self._map_tab_changed)
         self._build_resources()
         self._build_scalars()
         self._build_backups()
+        self._bind_settings_scroll(self.settings_content)
 
         footer = self.status_bar = ttk.Frame(self, padding=(8, 2))
         # Packed ahead of the notebook so a tall tab can never push it off-screen.
@@ -598,6 +589,136 @@ class LastCaretakerEditor(tk.Tk):
             font=("TkDefaultFont", 9, "bold"),
         ).pack(side=tk.RIGHT, padx=(8, 0))
         self.busy_progress = ttk.Progressbar(footer, mode="indeterminate", length=130)
+
+    def _build_settings(self) -> None:
+        ttk.Label(
+            self.settings_tab,
+            text="Preferences are saved when changed. Player locks edit the loaded save instead.",
+        ).pack(anchor=tk.W, pady=(0, 8))
+        body = ttk.Frame(self.settings_tab)
+        body.pack(fill=tk.BOTH, expand=True)
+        self.settings_canvas = tk.Canvas(body, highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(body, orient=tk.VERTICAL, command=self.settings_canvas.yview)
+        self.settings_canvas.configure(yscrollcommand=scrollbar.set)
+        self.settings_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.settings_content = ttk.Frame(self.settings_canvas)
+        window = self.settings_canvas.create_window(
+            (0, 0), window=self.settings_content, anchor=tk.NW,
+        )
+        self.settings_content.bind("<Configure>", lambda _e: self.settings_canvas.configure(
+            scrollregion=self.settings_canvas.bbox("all")))
+        self.settings_canvas.bind("<Configure>", lambda e: self.settings_canvas.itemconfigure(
+            window, width=e.width))
+        for column in (0, 1):
+            self.settings_content.columnconfigure(column, weight=1, uniform="settings")
+
+        def section(title: str, row: int, column: int, *, span: int = 1) -> ttk.LabelFrame:
+            frame = ttk.LabelFrame(self.settings_content, text=title, padding=10)
+            frame.grid(row=row, column=column, columnspan=span, sticky=tk.NSEW, padx=4, pady=4)
+            return frame
+
+        def option(parent, attribute: str, key: str, text: str, default: bool = True,
+                   command=None) -> None:
+            var = tk.BooleanVar(value=bool(self.settings.get(key, default)))
+            setattr(self, attribute, var)
+            ttk.Checkbutton(
+                parent, text=text, variable=var, command=command or self._save_preferences,
+            ).pack(anchor=tk.W, pady=2)
+
+        def help_text(parent, text: str) -> None:
+            label = ttk.Label(parent, text=text, wraplength=420)
+            label.pack(fill=tk.X, pady=(4, 0))
+            label.bind("<Configure>", lambda e: label.configure(wraplength=max(1, e.width)))
+
+        opening = section("Opening saves", 0, 0)
+        option(opening, "auto_load_latest_var", "auto_load_latest_save", "Auto Load Latest Save")
+        help_text(opening, "Load the most recently modified save on this PC at launch.")
+        option(opening, "repair_on_open_var", "repair_on_open", "Repair and Top Off On Open", False)
+        help_text(
+            opening, "Automatically repair and save after opening or manually reloading a save. "
+            "Uses the repair options below without the repair confirmation. Internal reloads "
+            "after edits do not run it again. Close the game before opening a save.",
+        )
+        warnings = section("Confirmations", 0, 1)
+        for attribute, key, text in (
+            ("confirm_save_var", "confirm_save", "Warn before saving"),
+            ("confirm_purge_var", "confirm_purge", "Warn before Purge"),
+            ("confirm_repair_var", "confirm_repair", "Warn before Repair & Top Off"),
+            ("confirm_delete_var", "confirm_delete", "Warn before Delete"),
+        ):
+            option(warnings, attribute, key, text)
+        help_text(warnings, "Errors, game-running checks and unsaved-edit safeguards always remain active.")
+
+        repair = section("Repair & Top Off", 1, 0)
+        option(repair, "repair_combine_var", "repair_combine", "Combine duplicate carried stacks")
+        option(repair, "refill_storage_var", "refill_storage_tanks", "Refill Storage Tanks")
+        buttons = ttk.Frame(repair)
+        buttons.pack(fill=tk.X, pady=(6, 0))
+        ttk.Button(buttons, text="Stack Targets...", command=self._configure_repair_targets).pack(
+            side=tk.LEFT, padx=(0, 4))
+        ttk.Button(buttons, text="Delete Items...", command=self._configure_deletion_items).pack(side=tk.LEFT)
+        help_text(repair, "Stack sizes and exact-name deletion rules apply to both manual and on-open repair. "
+                  "Combining and configured deletion run only after the first save succeeds.")
+
+        inventory = section("Inventory & Purge", 1, 1)
+        option(inventory, "show_empty_items", "show_empty_items", "Show zero-count catalog",
+               command=self._inventory_preference_changed)
+        option(inventory, "purge_include_world", "purge_include_world", "Include environment/world in Purge")
+
+        backups = section("Backups", 2, 0)
+        retention = ttk.Frame(backups)
+        retention.pack(fill=tk.X)
+        ttk.Label(retention, text="Keep backups:").pack(side=tk.LEFT)
+        self.keep_var = tk.IntVar(value=max(1, int(self.settings.get("backup_keep", 20))))
+        count = ttk.Spinbox(
+            retention, from_=1, to=500, textvariable=self.keep_var, width=6,
+            command=self._save_preferences,
+        )
+        count.pack(side=tk.LEFT, padx=6)
+        count.bind("<FocusOut>", lambda _e: self._save_preferences())
+        count.bind("<Return>", lambda _e: self._save_preferences())
+        help_text(backups, "Retention applies to startup and manual backups and operations that create a backup.")
+
+        locks = section("Player locks (loaded save)", 2, 1)
+        self.player_lock_vars: dict[str, tk.BooleanVar] = {}
+        self.player_lock_buttons: dict[str, ttk.Checkbutton] = {}
+        for key, spec in save_io.PLAYER_LOCKS.items():
+            var = tk.BooleanVar(value=False)
+            button = ttk.Checkbutton(
+                locks, text=spec["label"], variable=var, state=tk.DISABLED,
+                command=lambda key=key: self._toggle_player_lock(key),
+            )
+            button.pack(anchor=tk.W, pady=2)
+            self.player_lock_vars[key] = var
+            self.player_lock_buttons[key] = button
+        help_text(locks, "Reflects the current save, not a global preference. Changing a lock confirms, backs up "
+                  "and writes the save immediately.")
+        self.map_settings = section("Map layers", 3, 0, span=2)
+
+    def _bind_settings_scroll(self, widget) -> None:
+        if widget is self.map_view.layer_canvas:
+            return
+        widget.bind("<MouseWheel>", lambda e: self.settings_canvas.yview_scroll(
+            -1 if e.delta > 0 else 1, "units"))
+        for child in widget.winfo_children():
+            self._bind_settings_scroll(child)
+
+    def _save_preferences(self) -> bool:
+        try:
+            saved = self._write_settings()
+        except (ValueError, tk.TclError):
+            messagebox.showerror("Invalid backup count", "Enter a whole number in Settings > Backups > Keep backups.")
+            return False
+        if not saved:
+            messagebox.showerror("Settings failed", "Could not save editor settings.")
+            return False
+        self.status_var.set("Settings saved")
+        return True
+
+    def _inventory_preference_changed(self) -> None:
+        self._populate_inventory()
+        self._save_preferences()
 
     def _reset_map(self) -> None:
         self._map_document = None
@@ -668,7 +789,7 @@ class LastCaretakerEditor(tk.Tk):
         try:
             keep = max(1, self.keep_var.get())
         except (ValueError, tk.TclError):
-            messagebox.showerror("Invalid backup count", "Enter a whole number in Backups > Keep backups.")
+            messagebox.showerror("Invalid backup count", "Enter a whole number in Settings > Backups > Keep backups.")
             return
         destination = (player.position[0], player.position[1] - 1.0, player.position[2])
         prompt = (
@@ -897,17 +1018,6 @@ class LastCaretakerEditor(tk.Tk):
         ttk.Button(
             actions, text="Boost Health/Energy Enhancers...", command=self._boost_survival_enhancers
         ).pack(side=tk.LEFT, padx=2)
-        self.player_lock_vars: dict[str, tk.BooleanVar] = {}
-        self.player_lock_buttons: dict[str, ttk.Checkbutton] = {}
-        for key, spec in save_io.PLAYER_LOCKS.items():
-            var = tk.BooleanVar(value=False)
-            button = ttk.Checkbutton(
-                actions, text=spec["label"], variable=var, state=tk.DISABLED,
-                command=lambda key=key: self._toggle_player_lock(key),
-            )
-            button.pack(side=tk.LEFT, padx=(10 if not self.player_lock_vars else 2, 2))
-            self.player_lock_vars[key] = var
-            self.player_lock_buttons[key] = button
 
     def _build_inventory(self) -> None:
         toolbar = ttk.Frame(self.inventory_tab)
@@ -926,13 +1036,6 @@ class LastCaretakerEditor(tk.Tk):
         )
         location_combo.pack(side=tk.LEFT, padx=(0, 6))
         location_combo.bind("<<ComboboxSelected>>", lambda _event: self._populate_inventory())
-        self.show_empty_items = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            filter_row,
-            text="Show zero-count catalog",
-            variable=self.show_empty_items,
-            command=self._populate_inventory,
-        ).pack(side=tk.LEFT, padx=(0, 6))
 
         edit_row = ttk.Frame(toolbar)
         edit_row.pack(fill=tk.X, pady=(4, 0))
@@ -954,29 +1057,7 @@ class LastCaretakerEditor(tk.Tk):
             maintenance_row, text="Purge Empty Slots", style="Purge.TButton",
             command=self._purge_empty_slots,
         ).pack(side=tk.LEFT, padx=2)
-        self.purge_include_world = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            maintenance_row,
-            text="Include environment/world",
-            variable=self.purge_include_world,
-        ).pack(side=tk.LEFT, padx=(0, 6))
         ttk.Button(maintenance_row, text="Mark Blueprints Scanned", command=self._mark_blueprints_scanned).pack(side=tk.LEFT, padx=2)
-        self.repair_combine_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            maintenance_row, text="Combine", variable=self.repair_combine_var,
-        ).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(
-            maintenance_row, text="Stack Targets...", command=self._configure_repair_targets,
-        ).pack(side=tk.LEFT, padx=2)
-        self.refill_storage_var = tk.BooleanVar(
-            value=bool(self.settings.get("refill_storage_tanks", True)),
-        )
-        ttk.Checkbutton(
-            edit_row, text="Refill Storage Tanks", variable=self.refill_storage_var,
-        ).pack(side=tk.LEFT, padx=(10, 2))
-        ttk.Button(
-            edit_row, text="Delete Items...", command=self._configure_deletion_items,
-        ).pack(side=tk.LEFT, padx=2)
         self.inventory_tree = self._make_tree(self.inventory_tab, ITEM_COLUMNS, search_column="asset")
         for category, background in INVENTORY_TYPE_COLORS.items():
             self.inventory_tree.tag_configure(
@@ -1417,9 +1498,6 @@ class LastCaretakerEditor(tk.Tk):
     def _build_backups(self) -> None:
         toolbar = ttk.Frame(self.backups_tab)
         toolbar.pack(fill=tk.X, pady=(0, 6))
-        ttk.Label(toolbar, text="Keep backups:").pack(side=tk.LEFT)
-        self.keep_var = tk.IntVar(value=max(1, int(self.settings.get("backup_keep", 20))))
-        ttk.Spinbox(toolbar, from_=1, to=500, textvariable=self.keep_var, width=6).pack(side=tk.LEFT, padx=4)
         ttk.Button(toolbar, text="Create Backup Now", command=self._create_backup).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="Restore Selected", command=self._restore_backup).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="Open Save Folder", command=self._open_folder).pack(side=tk.LEFT, padx=2)
@@ -1439,7 +1517,7 @@ class LastCaretakerEditor(tk.Tk):
     def _select_save(self, _event: tk.Event | None = None) -> None:
         value = self.save_var.get()
         if value:
-            self._load(Path(value))
+            self._open_save(Path(value))
 
     def _open(self) -> None:
         path = filedialog.askopenfilename(
@@ -1448,12 +1526,25 @@ class LastCaretakerEditor(tk.Tk):
             filetypes=(("The Last Caretaker saves", "*.sav"), ("All files", "*.*")),
         )
         if path:
-            self._load(Path(path))
+            self._open_save(Path(path))
 
     def _load_startup_save(self) -> None:
+        if not self.auto_load_latest_var.get():
+            self.status_var.set("Choose a save or use Browse... to open one")
+            return
         path = self.candidates[0] if self.candidates else None
-        if path is not None and self._load(path):
+        if path is not None:
+            self._open_save(path, startup=True)
+
+    def _open_save(self, path: Path, *, confirm_discard: bool = True, startup: bool = False) -> bool:
+        """User-facing loads run automation; internal post-write loads never do."""
+        if not self._load(path, confirm_discard=confirm_discard):
+            return False
+        if startup:
             self._create_backup()
+        if self.repair_on_open_var.get():
+            self._repair_and_top_off(automatic=True)
+        return True
 
     def _open_full_screen(self) -> None:
         geometry = self.settings.get("geometry")
@@ -1582,7 +1673,7 @@ class LastCaretakerEditor(tk.Tk):
         ):
             self.status_var.set("Reload canceled; pending edits kept")
             return
-        self._load(self.document.path, confirm_discard=False)
+        self._open_save(self.document.path, confirm_discard=False)
         self.status_var.set(f"Reloaded {self.document.path.name} from disk")
 
     def _display_value(self, entry: save_io.Entry | None) -> str:
@@ -1995,8 +2086,12 @@ class LastCaretakerEditor(tk.Tk):
         return True
 
     @_not_while_pumping
-    def _repair_and_top_off(self) -> None:
+    def _repair_and_top_off(self, *, automatic: bool = False) -> None:
         if not self.document:
+            return
+        if automatic and _run_in_background(self, _game_is_running):
+            self.status_var.set("Automatic Repair & Top Off skipped: the game is running")
+            messagebox.showerror("Game is running", "Close The Last Caretaker before automatically repairing its save.")
             return
         if getattr(self, "human_pending", None) or getattr(self, "human_attribute_pending", None):
             messagebox.showwarning(
@@ -2007,7 +2102,7 @@ class LastCaretakerEditor(tk.Tk):
             return
         if not self._sync_document():
             return
-        selected = self._selected_items()
+        selected = [] if automatic else self._selected_items()
         if selected:
             targets = selected
             non_carried = sum(
@@ -2053,12 +2148,12 @@ class LastCaretakerEditor(tk.Tk):
             "their category.\n"
             if overrides else ""
         )
-        if self.confirm_repair_var.get() and not messagebox.askyesno(
+        if not automatic and self.confirm_repair_var.get() and not messagebox.askyesno(
             "Repair and top off?",
             f"Refill and repair {scope}?\n\n"
             f"{per_item}"
             "Carried items (backpack, holster, equipped) are refilled to the "
-            "configured stack target for their category (Stack Targets...). "
+            "configured stack target for their category (Settings > Stack Targets...). "
             f"These apply wherever the item is: {special}. Attachments "
             "installed on a weapon are left untouched. Anything else not "
             "carried by the player (environment, containers, catalog, module "
@@ -2781,7 +2876,7 @@ class LastCaretakerEditor(tk.Tk):
         try:
             keep = max(1, self.keep_var.get())
         except (ValueError, tk.TclError):
-            messagebox.showerror("Invalid backup count", "Enter a whole number in Backups > Keep backups.")
+            messagebox.showerror("Invalid backup count", "Enter a whole number in Settings > Backups > Keep backups.")
             return False
         if human_keys:
             data = self.document.human_data
@@ -3010,6 +3105,11 @@ class LastCaretakerEditor(tk.Tk):
             "confirm_repair": self.confirm_repair_var.get(),
             "confirm_delete": self.confirm_delete_var.get(),
             "repair_combine": self.repair_combine_var.get(),
+            "auto_load_latest_save": self.auto_load_latest_var.get(),
+            "repair_on_open": self.repair_on_open_var.get(),
+            "show_empty_items": self.show_empty_items.get(),
+            "purge_include_world": self.purge_include_world.get(),
+            "map_layers": {key: var.get() for key, var in self.map_view.layer_vars.items()},
             "refill_storage_tanks": self.refill_storage_var.get(),
             "repair_stack_targets": save_io.normalize_repair_targets(self.repair_targets),
             "repair_asset_targets": save_io.normalize_asset_targets(self.repair_asset_targets),
