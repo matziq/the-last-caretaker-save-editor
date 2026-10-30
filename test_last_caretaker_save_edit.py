@@ -3111,7 +3111,7 @@ class ResponsiveGuiTests(unittest.TestCase):
         self.assertIn("Save file on this PC:", texts)
         self.assertIn("Browse...", texts)
 
-    def test_all_checkboxes_and_configuration_controls_are_in_settings(self) -> None:
+    def test_options_are_in_settings_except_map_layers(self) -> None:
         app = self.app
         self.assertIn("Settings", [app.notebook.tab(tab, "text") for tab in app.notebook.tabs()])
         pending = list(app.winfo_children())
@@ -3129,7 +3129,11 @@ class ResponsiveGuiTests(unittest.TestCase):
                 configuration.append(widget)
         self.assertGreater(len(checkboxes), 12)
         self.assertEqual(3, len(configuration))
-        for widget in checkboxes + configuration:
+        layers = set(app.map_view.layer_checks.values())
+        self.assertTrue(layers.issubset(checkboxes))
+        for widget in layers:
+            self.assertTrue(str(widget).startswith(str(app.map_tab) + "."), widget)
+        for widget in [check for check in checkboxes if check not in layers] + configuration:
             self.assertTrue(str(widget).startswith(str(app.settings_tab) + "."), widget)
 
     def test_settings_changes_are_saved_immediately_and_loaded_next_launch(self) -> None:
@@ -3239,7 +3243,7 @@ class ResponsiveGuiTests(unittest.TestCase):
                             widget.winfo_rootx() + widget.winfo_width(),
                             app.winfo_rootx() + app.winfo_width(), (size, widget),
                         )
-            self.assertGreater(app.settings_canvas.yview()[0], 0)
+            self.assertAlmostEqual(1.0, app.settings_canvas.yview()[1])
 
     def test_on_open_combine_writes_structure_without_repeating_repair(self) -> None:
         app = self.app

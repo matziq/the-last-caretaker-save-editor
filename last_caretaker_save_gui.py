@@ -565,7 +565,6 @@ class LastCaretakerEditor(tk.Tk):
             self.map_tab, reload_map=lambda: self._load_map(force=True),
             matches_filter=self._matches_filter,
             move_selected=self._move_selected_map_object,
-            layer_parent=self.map_settings,
             layer_settings=self.settings.get("map_layers", {}),
             on_layers_changed=self._save_preferences,
         )
@@ -694,11 +693,8 @@ class LastCaretakerEditor(tk.Tk):
             self.player_lock_buttons[key] = button
         help_text(locks, "Reflects the current save, not a global preference. Changing a lock confirms, backs up "
                   "and writes the save immediately.")
-        self.map_settings = section("Map layers", 3, 0, span=2)
 
     def _bind_settings_scroll(self, widget) -> None:
-        if widget is self.map_view.layer_canvas:
-            return
         widget.bind("<MouseWheel>", lambda e: self.settings_canvas.yview_scroll(
             -1 if e.delta > 0 else 1, "units"))
         for child in widget.winfo_children():

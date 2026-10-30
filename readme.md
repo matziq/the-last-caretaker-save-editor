@@ -50,9 +50,10 @@ browse to any compatible `.sav` manually.
 
 ## Features
 
-- **Settings** centralizes all checkboxes and options: startup behavior,
+- **Settings** centralizes editor options: startup behavior,
   warnings, Repair & Top Off stack targets and deletion rules, inventory display,
-  Purge scope, backup retention, player locks, and map layers. Preferences persist
+  Purge scope, backup retention, and player locks. Map-layer checkboxes stay on
+  **Map > Layers** for use alongside the map. Preferences persist
   when changed; player locks reflect and edit the loaded save rather than being
   global defaults.
 - **Repair and Top Off On Open** in Settings is off by default. When enabled,
@@ -395,7 +396,7 @@ positions, **not terrain, coastlines, routes, or every object in the game**.
 No game installation or network connection is required.
 
 **Player**, **Humans in pods**, and **Named locations** are enabled initially.
-Layer checkboxes in **Settings > Map layers** also
+Layer checkboxes in **Map > Layers** also
 show other human pods, functional rockets, checkpoints, containers/crates, and
 other saved actors. The layer list scrolls and remembers enabled layers between launches.
 A pod without a grown human may still contain a seed;

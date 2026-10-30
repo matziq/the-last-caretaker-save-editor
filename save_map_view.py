@@ -14,7 +14,7 @@ class SaveMapView(ttk.Frame):
     def __init__(self, parent, *, reload_map: Callable[[], None],
                  matches_filter: Callable[[str, str], bool],
                  move_selected: Callable[[MapPoint], None] | None = None,
-                 layer_parent=None, layer_settings: dict[str, bool] | None = None,
+                 layer_settings: dict[str, bool] | None = None,
                  on_layers_changed: Callable[[], None] | None = None):
         super().__init__(parent)
         self.matches_filter = matches_filter
@@ -86,21 +86,13 @@ class SaveMapView(ttk.Frame):
         sidebar.rowconfigure(0, weight=1)
         self.inspector = ttk.Notebook(sidebar)
         self.inspector.grid(row=0, column=0, sticky="nsew")
-        self.layers_tab = ttk.Frame(
-            layer_parent if layer_parent is not None else self.inspector, padding=4,
-        )
+        self.layers_tab = ttk.Frame(self.inspector, padding=4)
         self.details_tab = ttk.Frame(self.inspector, padding=4)
-        if layer_parent is None:
-            self.inspector.add(self.layers_tab, text="Layers")
-        else:
-            self.layers_tab.pack(fill=tk.BOTH, expand=True)
+        self.inspector.add(self.layers_tab, text="Layers")
         self.inspector.add(self.details_tab, text="Object details")
         self.layers_tab.rowconfigure(0, weight=1)
         self.layers_tab.columnconfigure(0, weight=1)
-        self.layer_canvas = tk.Canvas(
-            self.layers_tab, width=300, height=220 if layer_parent is not None else 1,
-            highlightthickness=0,
-        )
+        self.layer_canvas = tk.Canvas(self.layers_tab, width=300, height=1, highlightthickness=0)
         self.layer_canvas.grid(row=0, column=0, sticky="nsew")
         layer_scroll = ttk.Scrollbar(self.layers_tab, command=self.layer_canvas.yview)
         layer_scroll.grid(row=0, column=1, sticky="ns")
@@ -420,9 +412,7 @@ class SaveMapView(ttk.Frame):
             self.inspector.select(self.details_tab)
             self._select_list()
         else:
-            self.inspector.select(
-                self.layers_tab if str(self.layers_tab) in self.inspector.tabs() else self.details_tab,
-            )
+            self.inspector.select(self.layers_tab)
             self._set_details("Click a marker to see its saved coordinates and identity.\n\n"
                               "A numbered marker contains nearby objects; select an entry above "
                               "or double-click it to zoom in.")

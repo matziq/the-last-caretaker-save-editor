@@ -695,9 +695,6 @@ class MapEditorIntegrationTests(unittest.TestCase):
                     self.assertLessEqual(y + widget.winfo_height(), height, (geometry, widget))
             self.assertGreater(app.map_view.canvas.winfo_width(), 300)
             self.assertGreater(app.map_view.canvas.winfo_height(), 180)
-            app.notebook.select(app.settings_tab)
-            app.settings_canvas.yview_moveto(1)
-            app.update_idletasks()
             app.map_view.layer_canvas.yview_moveto(1)
             app.update_idletasks()
             last_layer = app.map_view.layer_checks["other"]
