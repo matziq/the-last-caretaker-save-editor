@@ -2286,11 +2286,12 @@ class LastCaretakerEditor(tk.Tk):
             f"Update {len(storage_edits)} container field(s): Stored Amount "
             f"{configured['storage.tanks']}, Health {configured['storage.health']}, "
             f"ExtraDamage {configured['storage.extra_damage']} (Refill Storage Tanks).\n"
-            "All visible Container Resources are included, except the player's infinite "
-            "backpack Electricity.\n"
+            "Every existing Resources.* amount in All Scalars uses the Storage target, "
+            "including NPCs, hidden world actors and backpack Electricity. "
+            "Condition-field protections remain unchanged.\n"
             f"Set {len(rocket_edits)} Functional Rocket resource field(s): "
             + ", ".join(f"{name} {value}" for name, value in save_io.ROCKET_RESOURCE_TARGETS.items())
-            + ". Other hidden UAID actors remain untouched.",
+            + ". With Refill Storage Tanks enabled, the Storage amount overrides these rocket targets.",
         ):
             return
         with _busy_ui(self, "Processing Repair & Top Off...") as progress:
@@ -2305,9 +2306,9 @@ class LastCaretakerEditor(tk.Tk):
     ) -> None:
         progress("Calculating Repair & Top Off changes...")
         edits = save_io.repair_and_top_off(self.document, owned, configured, overrides)
-        edits.extend(storage_edits)
         edits.extend(seed_edits)
         edits.extend(rocket_edits)
+        edits.extend(storage_edits)
         for entry, value in edits:
             if value == entry.value:
                 self.pending.pop(entry.offset, None)

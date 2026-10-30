@@ -111,12 +111,13 @@ browse to any compatible `.sav` manually.
   confirmed. No automatic percentage conversion is performed.
   **Repair & Top Off**, with **Refill Storage Tanks** enabled (default),
   sets **Stored Amount to 50000**, **Health to 10000**, and **ExtraDamage to
-  10000** for all visible Container Resources, including generators,
-  empty entries, and amounts already above the target. The exception is
-  infinite **Electricity** belonging to `BP_FirstPersonCharacter_New_C1` in
-  **Player Backpack**: its amount and associated condition fields are left
-  untouched. Actors containing `NPC` or `_C_UAID_` remain hidden and untouched,
-  except the Functional Rocket described below. Scope is
+  10000** for eligible container condition fields. **Every existing
+  `Resources.*` amount in All Scalars** is set to the Stored Amount target,
+  including NPCs, hidden `_C_UAID_` actors, generators, backpack Electricity
+  (even an infinite saved amount), zero entries, and amounts above the target.
+  NPCs, hidden world actors and infinite backpack Electricity retain their
+  condition-field protections; their Health and ExtraDamage are not changed
+  by storage refill. Empty resource maps are not populated. Scope is
   independent of inventory selection and text filters; actor numeric suffixes
   no longer restrict it. Missing or ambiguous condition fields are not created
   or guessed. Shared fields are updated only once.
@@ -166,8 +167,9 @@ browse to any compatible `.sav` manually.
   The hidden Functional Rocket (`BP_Rocket_Functional_C_UAID_*`) is also
   filled every run, regardless of selection or Refill Storage Tanks:
   `Resources.Electricity` **60000**, `Resources.Methane` **3000**, and
-  `Resources.Oxygen` **12000**. Its other resources and condition fields, and
-  all other hidden UAID actors, are unchanged.
+  `Resources.Oxygen` **12000** when Storage refill is disabled. When enabled,
+  the Storage Stored Amount target takes precedence for every rocket resource
+  too. Hidden actors' condition fields remain unchanged.
   The repair is written immediately; when **Settings > Combine duplicate carried
   stacks** is enabled (the default), duplicate carried stacks are then
   combined automatically and that change is written separately. **Remove Duplicate

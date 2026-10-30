@@ -858,7 +858,7 @@ class RepairAndTopOffGuiTests(unittest.TestCase):
         prompt.assert_not_called()
         self.assertIn("save:False", events)
 
-    def test_storage_refill_is_queued_before_save_and_excludes_npcs(self) -> None:
+    def test_storage_refill_is_queued_before_save_and_includes_npc_amounts(self) -> None:
         events = []
         app, _, count_entry = self._editor(events, refill=True, save_succeeds=False)
         app.repair_targets["storage.tanks"] = 31000
@@ -875,7 +875,7 @@ class RepairAndTopOffGuiTests(unittest.TestCase):
             patch.object(gui.save_io, "repair_and_top_off", return_value=[(count_entry, 999)]),
         ):
             gui.LastCaretakerEditor._repair_and_top_off(app)
-        self.assertEqual({10: 999, 100: 31000, 300: 10000, 400: 10000}, app.pending)
+        self.assertEqual({10: 999, 100: 31000, 200: 31000, 300: 10000, 400: 10000}, app.pending)
         self.assertEqual(["sync", "refresh", "save:False"], events)
 
     def test_storage_refill_disabled_leaves_resources_unchanged(self) -> None:
@@ -887,6 +887,21 @@ class RepairAndTopOffGuiTests(unittest.TestCase):
         ):
             gui.LastCaretakerEditor._repair_and_top_off(app)
         refill.assert_not_called()
+
+    def test_storage_target_overrides_rocket_targets(self) -> None:
+        app, _, entry = self._editor([], refill=True, combine=False)
+        app.repair_targets["storage.tanks"] = 42000
+        resource = editor.Entry(1, 100, "Resources.Methane", "DoubleProperty", 0)
+        app.document.resources = [
+            editor.ResourceAmount("Methane", "BP_Rocket_Functional_C_UAID_123",
+                                  "", "Other", 20, resource),
+        ]
+        with (
+            patch.object(gui.messagebox, "askyesno", return_value=True),
+            patch.object(gui.save_io, "repair_and_top_off", return_value=[(entry, 999)]),
+        ):
+            gui.LastCaretakerEditor._repair_and_top_off(app)
+        self.assertEqual(42000, app.pending[100])
 
     def test_storage_only_save_can_refill_without_carried_items(self) -> None:
         app, _, _ = self._editor([], refill=True, combine=False)
@@ -3964,7 +3979,7 @@ class ResourceAmountTests(unittest.TestCase):
             with self.subTest(target=target), self.assertRaises(ValueError):
                 editor.storage_refill_edits(doc, target)
 
-    def test_refill_all_visible_condition_fields_and_preserve_infinite_player_electricity(self):
+    def test_refill_all_amounts_but_preserve_protected_condition_fields(self):
         def record(index, actor, resource="Electricity", amount=0, location="Other"):
             return editor.ResourceAmount(
                 resource, actor, "", location, index,
@@ -3981,6 +3996,8 @@ class ResourceAmountTests(unittest.TestCase):
         doc = SimpleNamespace(resources=[npc, generator, player, world, finite_player])
         edits = editor.storage_refill_edits(doc, 50000)
         expected = {
+            npc.entry.offset: 50000, player.entry.offset: 50000,
+            world.entry.offset: 50000,
             generator.entry.offset: 50000, generator.extra_damage.offset: 10000,
             finite_player.entry.offset: 50000, finite_player.health.offset: 10000,
             finite_player.extra_damage.offset: 10000,
@@ -3989,6 +4006,16 @@ class ResourceAmountTests(unittest.TestCase):
         self.assertEqual(len(expected), len(edits))
         self.assertFalse(editor.is_refillable_storage(npc))
         self.assertTrue(editor.math.isinf(player.entry.value))
+
+    def test_refill_resources_from_all_scalars_without_container_rows(self):
+        entries = [
+            editor.Entry(0, 100, "Resources.Custom1", "DoubleProperty", 75000),
+            editor.Entry(1, 200, "Resources.Oxygen", "FloatProperty", 0),
+            editor.Entry(2, 300, "Health", "FloatProperty", 20),
+        ]
+        doc = SimpleNamespace(entries=entries, resources=[])
+        self.assertEqual([(entries[0], 12345), (entries[1], 12345)],
+                         editor.storage_refill_edits(doc, 12345))
 
     def test_health_is_associated_only_with_unambiguous_actor_fields(self):
         health = editor.Entry(0, 100, "Health", "FloatProperty", 199.584442)

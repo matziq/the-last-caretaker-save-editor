@@ -689,11 +689,17 @@ def storage_refill_edits(
         for record in document.resources if not is_refillable_storage(record)
         for entry in (record.entry, record.health, record.extra_damage) if entry is not None
     }
-    edits: dict[int, tuple[Entry, int]] = {}
+    edits: dict[int, tuple[Entry, int]] = {
+        entry.offset: (entry, target)
+        for entry in getattr(document, "entries", ())
+        if entry.name.startswith("Resources.")
+    }
+    for record in document.resources:
+        edits[record.entry.offset] = (record.entry, target)
     for record in document.resources:
         if not is_refillable_storage(record):
             continue
-        for entry, value in ((record.entry, target), (record.health, health), (record.extra_damage, extra_damage)):
+        for entry, value in ((record.health, health), (record.extra_damage, extra_damage)):
             if entry is not None and entry.offset not in protected_offsets:
                 edits[entry.offset] = (entry, value)
     return list(edits.values())
