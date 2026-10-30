@@ -15,11 +15,14 @@ class SaveMapView(ttk.Frame):
                  matches_filter: Callable[[str, str], bool],
                  move_selected: Callable[[MapPoint], None] | None = None,
                  layer_settings: dict[str, bool] | None = None,
-                 on_layers_changed: Callable[[], None] | None = None):
+                 on_layers_changed: Callable[[], None] | None = None,
+                 warp_player: Callable[[str, tuple[float, float, float]], None] | None = None):
         super().__init__(parent)
         self.matches_filter = matches_filter
         self.move_selected_callback = move_selected
         self.on_layers_changed = on_layers_changed
+        self.warp_player_callback = warp_player
+        self._picking_warp = False
         self.data: MapData | None = None
         self.visible: list[MapPoint] = []
         self.camera = MapCamera()
@@ -60,6 +63,10 @@ class SaveMapView(ttk.Frame):
         ):
             ttk.Button(toolbar, text=text, command=command).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(toolbar, text="Refresh map", command=reload_map).pack(side=tk.LEFT, padx=4)
+        self.warp_button = ttk.Button(
+            toolbar, text="Warp player...", command=self._toggle_warp, state=tk.DISABLED,
+        )
+        self.warp_button.pack(side=tk.LEFT, padx=4)
         body = ttk.Frame(self)
         body.grid(row=2, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
@@ -72,6 +79,7 @@ class SaveMapView(ttk.Frame):
         self.canvas.bind("<B1-Motion>", self._drag)
         self.canvas.bind("<ButtonRelease-1>", self._release)
         self.canvas.bind("<Double-Button-1>", self._expand)
+        self.canvas.bind("<Escape>", lambda _e: self._cancel_warp())
         self.canvas.bind("<MouseWheel>", self._wheel)
         self.canvas.bind("<Button-4>", lambda e: self.zoom(1.3, e.x, e.y))
         self.canvas.bind("<Button-5>", lambda e: self.zoom(1 / 1.3, e.x, e.y))
@@ -171,6 +179,8 @@ class SaveMapView(ttk.Frame):
         return "break"
 
     def reset(self, message: str = "Load a save, then open Map to read saved positions.") -> None:
+        self._cancel_warp()
+        self.warp_button.configure(state=tk.DISABLED)
         self.data = None
         self.visible = []
         self.groups.clear()
@@ -194,7 +204,11 @@ class SaveMapView(ttk.Frame):
     def apply_filter(self, *, fit: bool = False) -> None:
         if self.data is None:
             return
+        self._cancel_warp()
         world = self.world_var.get()
+        self.warp_button.configure(
+            state=tk.NORMAL if self.warp_player_callback and self.data.player(world) else tk.DISABLED,
+        )
         world_points = [point for point in self.data.points if point.world == world]
         counts = Counter(point.layer for point in world_points)
         for key, label, _color, _enabled in LAYERS:
@@ -388,8 +402,39 @@ class SaveMapView(ttk.Frame):
 
     def _release(self, event) -> None:
         if self._drag_origin is not None and math.dist(self._drag_origin, (event.x, event.y)) <= 4:
-            self._select_group(self._hit(event.x, event.y))
+            if self._picking_warp:
+                world = self.world_var.get()
+                player = self.data.player(world) if self.data else None
+                x, y = self.camera.world(
+                    event.x, event.y, self.canvas.winfo_width(), self.canvas.winfo_height(),
+                )
+                self._cancel_warp()
+                if player is not None and self.warp_player_callback is not None:
+                    self.warp_player_callback(world, (x, y, player.position[2]))
+            else:
+                self._select_group(self._hit(event.x, event.y))
         self._drag_origin = self._drag_last = None
+
+    def _toggle_warp(self) -> None:
+        if self._picking_warp:
+            self._cancel_warp()
+            return
+        if not self.data or not self.data.player(self.world_var.get()) or not self.warp_player_callback:
+            return
+        self._picking_warp = True
+        self.warp_button.configure(text="Cancel warp")
+        self.canvas.configure(cursor="crosshair")
+        self.canvas.focus_set()
+        self.status.set("Click a destination on the map, then review its height. Drag still pans. "
+                        "Escape or Cancel warp cancels. No terrain or collision safety checks.")
+
+    def _cancel_warp(self) -> None:
+        was_picking = self._picking_warp
+        self._picking_warp = False
+        self.warp_button.configure(text="Warp player...")
+        self.canvas.configure(cursor="")
+        if was_picking:
+            self.status.set("Warp destination picking ended; no save has been changed.")
 
     def _expand(self, event) -> str:
         group = self._hit(event.x, event.y)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 from collections import Counter
 from contextlib import contextmanager
 from fnmatch import fnmatchcase
@@ -457,6 +458,44 @@ class _HumanStatDialog(simpledialog.Dialog):
         self.result = self.parsed
 
 
+class _PlayerWarpDialog(simpledialog.Dialog):
+    def __init__(self, parent, world: str, destination: human_io.Position3D) -> None:
+        self.world = world
+        self.destination = destination
+        super().__init__(parent, "Player warp destination")
+
+    def body(self, master):
+        ttk.Label(master, text=f"World: {self.world}", wraplength=480).grid(
+            row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
+        for row, (label, value) in enumerate(zip(("X (m):", "Y (m):"), self.destination), 1):
+            ttk.Label(master, text=label).grid(row=row, column=0, sticky=tk.W, padx=(0, 12))
+            ttk.Label(master, text=f"{value:,.3f}").grid(row=row, column=1, sticky=tk.W)
+        ttk.Label(master, text="Height Z (m):").grid(row=3, column=0, sticky=tk.W, padx=(0, 12))
+        self.height = ttk.Entry(master, width=24)
+        self.height.insert(0, repr(self.destination[2]))
+        self.height.grid(row=3, column=1, sticky=tk.EW, pady=4)
+        ttk.Label(
+            master, wraplength=480,
+            text="Height starts at the saved player's current Z, not the terrain or water surface. "
+                 "Choose a known safe height. The map cannot detect terrain, buildings, water "
+                 "depth or collision. You could appear underground, underwater or in midair.\n\n"
+                 "OK reviews the move; the next confirmation creates a backup and writes the save. "
+                 "This moves only the player, not a ship or vehicle.",
+        ).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=(10, 0))
+        return self.height
+
+    def validate(self) -> bool:
+        try:
+            height = float(self.height.get())
+            if not math.isfinite(height) or not math.isfinite(height * 100):
+                raise ValueError("Height must be finite.")
+        except ValueError:
+            messagebox.showerror("Invalid height", "Enter a finite height in meters.", parent=self)
+            return False
+        self.result = (self.destination[0], self.destination[1], height)
+        return True
+
+
 class LastCaretakerEditor(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -567,6 +606,7 @@ class LastCaretakerEditor(tk.Tk):
             move_selected=self._move_selected_map_object,
             layer_settings=self.settings.get("map_layers", {}),
             on_layers_changed=self._save_preferences,
+            warp_player=self._warp_player_on_map,
         )
         self.map_view.pack(fill=tk.BOTH, expand=True)
         self.notebook.bind("<<NotebookTabChanged>>", self._map_tab_changed)
@@ -755,6 +795,89 @@ class LastCaretakerEditor(tk.Tk):
     ) -> Path | None:
         relocated = map_io.relocate_actor(document.raw, point, destination)
         return save_io.write_raw_changes(document, relocated, max_backups=keep)
+
+    @staticmethod
+    def _save_player_warp(
+        document: save_io.SaveDocument, player: map_io.MapPoint,
+        destination: human_io.Position3D, keep: int,
+    ) -> Path | None:
+        if _game_is_running():
+            raise RuntimeError("Close The Last Caretaker before writing its save.")
+        relocated = map_io.warp_player(document.raw, player, destination)
+        return save_io.write_raw_changes(document, relocated, max_backups=keep)
+
+    @_not_while_pumping
+    def _warp_player_on_map(self, world: str, destination: human_io.Position3D) -> None:
+        document = self.document
+        data = self.map_view.data
+        if document is None or data is None or self._map_document is not document:
+            messagebox.showerror("Map is out of date", "Refresh the map before warping the player.")
+            return
+        if _unsaved_edits(self):
+            messagebox.showerror("Unsaved edits", "Save or discard queued edits before warping the player.")
+            return
+        player = data.player(world)
+        if player is None:
+            messagebox.showerror("Player position unavailable", "A unique saved player is required in this world.")
+            return
+        if _run_in_background(self, _game_is_running):
+            messagebox.showerror("Game is running", "Close The Last Caretaker before writing its save.")
+            return
+        try:
+            keep = max(1, self.keep_var.get())
+        except (ValueError, tk.TclError):
+            messagebox.showerror("Invalid backup count", "Enter a whole number in Settings > Backups > Keep backups.")
+            return
+        try:
+            with _busy_ui(self, "Checking the saved player..."):
+                _run_in_background(self, map_io.player_warp_offsets, document.raw, player)
+                if _run_in_background(self, save_io.save_is_stale, document):
+                    raise ValueError("Save changed on disk; reload it and choose the destination again.")
+        except (ValueError, tk.TclError, gvas.GvasError, OSError, struct.error) as exc:
+            messagebox.showerror("Cannot warp player", str(exc), parent=self)
+            return
+        dialog = _PlayerWarpDialog(self, world, destination)
+        if dialog.result is None:
+            self.status_var.set("Player warp canceled; the save was not changed")
+            return
+        target = dialog.result
+        if not messagebox.askyesno(
+            "Warp player and save?",
+            f"Move the saved player in {world}?\n\n"
+            f"From X / Y / Z: {', '.join(f'{value:,.3f}' for value in player.position)} m\n"
+            f"To X / Y / Z: {', '.join(f'{value:,.3f}' for value in target)} m\n\n"
+            "Terrain, collision and water height are NOT checked. An unsafe position may "
+            "leave the player stuck or falling. Only the player moves, not a ship or vehicle.\n\n"
+            f"A backup is created before writing (keep {keep}). Restore it if needed. "
+            "Load this save in the game to use the new position.",
+            parent=self, icon="warning", default="no",
+        ):
+            self.status_var.set("Player warp canceled; the save was not changed")
+            return
+        failure: Exception | None = None
+        loaded = False
+        backup = None
+        with _busy_ui(self, "Saving player warp...") as progress:
+            try:
+                backup = _run_in_background(self, self._save_player_warp, document, player, target, keep)
+            except Exception as exc:
+                failure = exc
+            else:
+                progress("Reloading the saved player and map...")
+                loaded = self._load(document.path, confirm_discard=False)
+        if failure is not None:
+            self.status_var.set("Player warp failed; reload the save before retrying")
+            messagebox.showerror("Player warp failed", str(failure), parent=self)
+        elif not loaded:
+            self.status_var.set(
+                f"Player warp saved{f' (backup: {backup.name})' if backup else ''}, but reload failed. "
+                "Reload this save before editing again.")
+        elif backup is None:
+            self.status_var.set("Player already at the requested position; no save or backup was needed.")
+        else:
+            self.status_var.set(
+                f"Warped player to {', '.join(f'{value:,.3f}' for value in target)} m "
+                f"(backup: {backup.name}). Load this save in the game.")
 
     @_not_while_pumping
     def _move_selected_map_object(self, point: map_io.MapPoint) -> None:

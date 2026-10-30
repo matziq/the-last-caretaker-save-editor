@@ -98,6 +98,162 @@ def editor_fstring(value):
     return gui.save_io._pack_fstring(value)
 
 
+def warp_world(*, position=(100.25, -200.5, 345.75), cell="pawns",
+               attachment=b"\0" * 4, extra_player=False, cached=True,
+               component=False, transform_type="VoyagePackedTransform"):
+    player = (
+        string("ActorName", "BP_FirstPersonCharacter_New_C1", "NameProperty")
+        + tag("AttachParent", "OptionalProperty", attachment, gui.save_io._pack_type("ObjectProperty"))
+        + tag("AttachTransform", "OptionalProperty", b"\0" * 4,
+              gui.save_io._pack_type("StructProperty"))
+        + tag("Transform", "StructProperty", struct.pack("<3d3f", *position, 10, 20, 30),
+              gui.save_io._pack_type(transform_type, gui.save_io._pack_type("/Script/Voyage")))
+    )
+    for field in ("ComponentTransforms", "ComponentTransformsNonPhysical", "BoneTransforms"):
+        entries = [struct.pack("<I", 1) + packed_transform("Transform", position) + END] if component else []
+        player += struct_map(field, entries, "UInt32Property")
+    player += string("UnrelatedPlayerState", "Do not change equipment or rotation") + END
+    actors = [struct.pack("<Q", 1) + player]
+    if extra_player:
+        actors.append(struct.pack("<Q", 2) + player_actor((0, 0, 0)))
+    persistent = struct_map("PersistentActors", [
+        editor_fstring(cell) + struct_map("actors", actors, "UInt64Property") + END,
+        editor_fstring("other-cell") + struct_map("actors", [
+            struct.pack("<Q", 3) + actor("BP_Module_Building_C1"),
+        ], "UInt64Property") + END,
+    ], "NameProperty")
+    location = tag(
+        "LastLocation", "StructProperty", struct.pack("<3d", 101, -202, 350),
+        gui.save_io._pack_type("Vector", gui.save_io._pack_type("/Script/CoreUObject")),
+    ) if cached else b""
+    player_data = tag(
+        "PlayerData", "StructProperty",
+        location + string("UnrelatedPlayerData", "Preserve progression") + END,
+        gui.save_io._pack_type("TestStruct"),
+    )
+    return player_data + persistent + END
+
+
+def warp_save(**kwargs):
+    payload = HEADER + struct_map("GameProgress", [
+        editor_fstring(WORLD) + warp_world(**kwargs),
+        editor_fstring("other-world") + warp_world(position=(900, 800, 700)),
+    ], "NameProperty") + END + b"\0" * 4
+    return struct.pack("<I", len(payload)) + payload
+
+
+class PlayerWarpTests(unittest.TestCase):
+    @staticmethod
+    def player(raw):
+        return maps.read_map(raw).player(WORLD)
+
+    def test_warp_changes_only_player_and_cached_location_keeps_other_world_and_rotation(self):
+        raw = warp_save()
+        player = self.player(raw)
+        destination = (-12000.75, 4567.25, 16.5)
+        offsets = maps.player_warp_offsets(raw, player)
+        moved = maps.warp_player(raw, player, destination)
+        self.assertEqual(len(raw), len(moved))
+        self.assertEqual(destination, self.player(moved).position)
+        for offset in offsets:
+            self.assertEqual(tuple(value * 100 for value in destination),
+                             struct.unpack_from("<3d", moved, offset))
+        self.assertEqual(struct.pack("<3f", 10, 20, 30), moved[offsets[0] + 24:offsets[0] + 36])
+        changed = [i for i, (a, b) in enumerate(zip(raw, moved)) if a != b]
+        self.assertTrue(changed)
+        self.assertTrue(all(any(offset <= i < offset + 24 for offset in offsets) for i in changed))
+        self.assertEqual(maps.read_map(raw).player("other-world"),
+                         maps.read_map(moved).player("other-world"))
+        self.assertEqual(moved, maps.warp_player(moved, self.player(moved), destination))
+
+    def test_unsafe_or_unsupported_player_layout_is_rejected(self):
+        for kwargs, error in (
+            ({"attachment": b"\1\0\0\0"}, "attached"),
+            ({"extra_player": True}, "unique"),
+            ({"cell": "166:34"}, "pawns"),
+            ({"cached": False}, "LastLocation"),
+            ({"component": True}, "component transform"),
+        ):
+            with self.subTest(kwargs=kwargs):
+                raw = warp_save(**kwargs)
+                point = next(p for p in maps.read_map(raw).points if p.layer == "player" and p.world == WORLD)
+                with self.assertRaises((ValueError, gvas.GvasError)) as caught:
+                    maps.warp_player(raw, point, (0, 0, 0))
+                self.assertIn(error, str(caught.exception))
+
+    def test_stale_identity_position_nonplayer_and_invalid_coordinates_are_rejected(self):
+        from dataclasses import replace
+        raw = warp_save()
+        player = self.player(raw)
+        for point in (
+            replace(player, actor_offset=0),
+            replace(player, actor="BP_FirstPersonCharacter_wrong"),
+            replace(player, position=(0, 0, 0)),
+            replace(player, world="missing"),
+            replace(player, layer="locations"),
+        ):
+            with self.subTest(point=point), self.assertRaises(ValueError):
+                maps.warp_player(raw, point, (0, 0, 0))
+        for destination in ((math.nan, 0, 0), (0, math.inf, 0), (0, 0, -math.inf),
+                            (1e308, 0, 0), (0, 0), ("bad", 0, 0)):
+            with self.subTest(destination=destination), self.assertRaises(ValueError):
+                maps.warp_player(raw, player, destination)
+
+    def test_backed_up_atomic_write_and_stale_file_rejection(self):
+        raw = warp_save()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "warp.sav"
+            original = gui.save_io.compress_container(raw)
+            path.write_bytes(original)
+            doc = gui.save_io.load_save(path)
+            with patch.object(gui, "_game_is_running", return_value=False):
+                backup = gui.LastCaretakerEditor._save_player_warp(doc, self.player(raw), (30, 40, 50), 3)
+            self.assertIsNotNone(backup)
+            self.assertEqual(original, backup.read_bytes())
+            updated = gui.save_io.load_save(path)
+            self.assertEqual((30, 40, 50), self.player(updated.raw).position)
+            current = path.read_bytes()
+            with patch.object(gui, "_game_is_running", return_value=False):
+                with self.assertRaisesRegex(RuntimeError, "changed on disk"):
+                    gui.LastCaretakerEditor._save_player_warp(doc, self.player(raw), (60, 70, 80), 3)
+            self.assertEqual(current, path.read_bytes())
+
+    def test_failed_backup_prevents_write_and_game_running_is_refused(self):
+        raw = warp_save()
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "warp.sav"
+            original = gui.save_io.compress_container(raw)
+            path.write_bytes(original)
+            doc = gui.save_io.load_save(path)
+            with (
+                patch.object(gui, "_game_is_running", return_value=False),
+                patch.object(gui.save_io, "backup_save", side_effect=OSError("backup denied")),
+            ):
+                with self.assertRaisesRegex(OSError, "backup denied"):
+                    gui.LastCaretakerEditor._save_player_warp(doc, self.player(raw), (1, 2, 3), 3)
+            self.assertEqual(original, path.read_bytes())
+            with patch.object(gui, "_game_is_running", return_value=True):
+                with self.assertRaisesRegex(RuntimeError, "Close"):
+                    gui.LastCaretakerEditor._save_player_warp(doc, self.player(raw), (1, 2, 3), 3)
+            self.assertEqual(original, path.read_bytes())
+
+    def test_height_dialog_rejects_nonfinite_or_invalid_height(self):
+        for value in ("nan", "inf", "-inf", "1e308", "oops", ""):
+            with self.subTest(value=value), patch.object(gui.messagebox, "showerror") as error:
+                dialog = SimpleNamespace(
+                    destination=(12.5, -30.75, 4), height=SimpleNamespace(get=lambda: value),
+                    result=None,
+                )
+                self.assertFalse(gui._PlayerWarpDialog.validate(dialog))
+                error.assert_called_once()
+                self.assertIsNone(dialog.result)
+        dialog = SimpleNamespace(
+            destination=(12.5, -30.75, 4), height=SimpleNamespace(get=lambda: "-18.25"),
+        )
+        self.assertTrue(gui._PlayerWarpDialog.validate(dialog))
+        self.assertEqual((12.5, -30.75, -18.25), dialog.result)
+
+
 class MapReaderTests(unittest.TestCase):
     def test_exact_pod_coordinates_units_identity_and_height_aware_distance(self):
         position = (697005.1184324448, -16863.877727958843, 11213.787262575763)
@@ -404,6 +560,53 @@ class MapViewTests(unittest.TestCase):
         self.assertEqual(["p2"], [p.key for p in view.visible])
         self.assertIn("Player (1)", view.layer_checks["player"]["text"])
 
+    def test_warp_picker_uses_click_world_coordinates_and_current_player_height(self):
+        view = self.view
+        callback = Mock()
+        view.warp_player_callback = callback
+        view.apply_filter()
+        self.assertNotIn("disabled", view.warp_button.state())
+        view.camera = maps.MapCamera(100, -200, 2)
+        view._toggle_warp()
+        self.assertTrue(view._picking_warp)
+        self.assertEqual("crosshair", view.canvas.cget("cursor"))
+        event = SimpleNamespace(x=100, y=150)
+        expected = view.camera.world(event.x, event.y,
+                                     view.canvas.winfo_width(), view.canvas.winfo_height())
+        view._press(event)
+        view._release(event)
+        callback.assert_called_once_with(WORLD, (*expected, 0))
+        self.assertFalse(view._picking_warp)
+        self.assertEqual("Warp player...", view.warp_button.cget("text"))
+        self.assertEqual("", view.canvas.cget("cursor"))
+
+    def test_warp_picker_drag_cancel_filter_change_and_missing_player_do_not_warp(self):
+        view = self.view
+        callback = Mock()
+        view.warp_player_callback = callback
+        view.apply_filter()
+        view._toggle_warp()
+        view._press(SimpleNamespace(x=100, y=100))
+        view._drag(SimpleNamespace(x=150, y=150))
+        view._release(SimpleNamespace(x=150, y=150))
+        callback.assert_not_called()
+        self.assertTrue(view._picking_warp)
+        view._toggle_warp()
+        self.assertFalse(view._picking_warp)
+        view._toggle_warp()
+        view.world_var.set("other-world")
+        view.apply_filter()
+        self.assertFalse(view._picking_warp)
+        view._toggle_warp()
+        view.reset()
+        self.assertFalse(view._picking_warp)
+        self.assertIn("disabled", view.warp_button.state())
+        view.set_data(maps.MapData((self.points[1],), (WORLD,)))
+        self.assertIn("disabled", view.warp_button.state())
+        view._toggle_warp()
+        self.assertFalse(view._picking_warp)
+        callback.assert_not_called()
+
     def test_clusters_keep_each_human_selectable_and_copyable(self):
         view = self.view
         clusters = [group for group in view.groups.values() if len(group) == 2]
@@ -655,6 +858,136 @@ class MapEditorIntegrationTests(unittest.TestCase):
             app._move_selected_map_object(point)
         confirm.assert_called_once()
         save_move.assert_not_called()
+
+    def _warp_document(self):
+        app = self.app
+        app.document = document(warp_save())
+        app.map_view.set_data(maps.read_map(app.document.raw))
+        app._map_document = app.document
+        return app
+
+    def test_warp_reviews_height_confirms_saves_and_reloads_without_on_open_repair(self):
+        app = self._warp_document()
+        player = app.map_view.data.player(WORLD)
+        backup = Path("warp.sav.test.bak")
+        destination = (1000.25, -2000.5, player.position[2])
+        target = (*destination[:2], 25.75)
+        with (
+            patch.object(gui, "_game_is_running", return_value=False),
+            patch.object(gui.save_io, "save_is_stale", return_value=False),
+            patch.object(gui, "_PlayerWarpDialog", return_value=SimpleNamespace(result=target)) as dialog,
+            patch.object(gui.messagebox, "askyesno", return_value=True) as confirm,
+            patch.object(app, "_save_player_warp", return_value=backup) as write,
+            patch.object(app, "_load", return_value=True) as reload_save,
+            patch.object(app, "_repair_and_top_off") as repair,
+        ):
+            app.repair_on_open_var.set(True)
+            app._warp_player_on_map(WORLD, destination)
+        dialog.assert_called_once_with(app, WORLD, destination)
+        confirm.assert_called_once()
+        self.assertIn("25.750", confirm.call_args.args[1])
+        self.assertIn("NOT checked", confirm.call_args.args[1])
+        self.assertEqual("no", confirm.call_args.kwargs["default"])
+        write.assert_called_once_with(app.document, player, target, app.keep_var.get())
+        reload_save.assert_called_once_with(app.document.path, confirm_discard=False)
+        repair.assert_not_called()
+        self.assertIn("backup: warp.sav.test.bak", app.status_var.get())
+
+    def test_real_height_dialog_preserves_clicked_xy_and_returns_edited_z(self):
+        app = self.app
+        seen = []
+
+        def enter_height():
+            dialogs = [child for child in app.winfo_children() if isinstance(child, gui._PlayerWarpDialog)]
+            self.assertEqual(1, len(dialogs))
+            dialog = dialogs[0]
+            seen.append(dialog.height.get())
+            dialog.height.delete(0, tk.END)
+            dialog.height.insert(0, "-12.75")
+            dialog.ok()
+
+        app.after(30, enter_height)
+        dialog = gui._PlayerWarpDialog(app, WORLD, (45.25, -80.5, 3.125))
+        self.assertEqual(["3.125"], seen)
+        self.assertEqual((45.25, -80.5, -12.75), dialog.result)
+
+    def test_canceling_height_or_confirmation_never_writes(self):
+        for result, accept in ((None, True), ((1000, 2000, 10), False)):
+            with self.subTest(result=result, accept=accept):
+                app = self._warp_document()
+                with (
+                    patch.object(gui, "_game_is_running", return_value=False),
+                    patch.object(gui.save_io, "save_is_stale", return_value=False),
+                    patch.object(gui, "_PlayerWarpDialog", return_value=SimpleNamespace(result=result)),
+                    patch.object(gui.messagebox, "askyesno", return_value=accept) as confirm,
+                    patch.object(app, "_save_player_warp") as write,
+                ):
+                    app._warp_player_on_map(WORLD, (1000, 2000, 3))
+                write.assert_not_called()
+                self.assertIn("canceled", app.status_var.get())
+                if result is None:
+                    confirm.assert_not_called()
+
+    def test_warp_pending_edits_stale_map_stale_disk_game_and_missing_player_are_blocked(self):
+        for problem in ("pending", "human", "map", "disk", "game", "player", "layout", "keep"):
+            with self.subTest(problem=problem):
+                app = self._warp_document()
+                app.pending.clear()
+                app.human_pending.clear()
+                app.keep_var.set(20)
+                if problem == "pending":
+                    app.pending[1] = 2
+                elif problem == "human":
+                    app.human_pending[(WORLD, ALICE)] = DOCTOR
+                elif problem == "map":
+                    app._map_document = None
+                elif problem == "player":
+                    app.map_view.set_data(maps.MapData((), (WORLD,)))
+                elif problem == "layout":
+                    app.document = document(warp_save(attachment=b"\1\0\0\0"))
+                    app.map_view.set_data(maps.read_map(app.document.raw))
+                    app._map_document = app.document
+                elif problem == "keep":
+                    app.keep_var.set("bad")
+                with (
+                    patch.object(gui, "_game_is_running", return_value=problem == "game"),
+                    patch.object(gui.save_io, "save_is_stale", return_value=problem == "disk"),
+                    patch.object(gui, "_PlayerWarpDialog") as dialog,
+                    patch.object(gui.messagebox, "showerror") as error,
+                    patch.object(app, "_save_player_warp") as write,
+                ):
+                    app._warp_player_on_map(WORLD, (1000, 2000, 3))
+                error.assert_called_once()
+                dialog.assert_not_called()
+                write.assert_not_called()
+        app.pending.clear()
+        app.human_pending.clear()
+        app.keep_var.set(20)
+
+    def test_warp_write_failure_noop_and_reload_failure_have_explicit_status(self):
+        for state in ("write", "reload", "noop"):
+            with self.subTest(state=state):
+                app = self._warp_document()
+                with (
+                    patch.object(gui, "_game_is_running", return_value=False),
+                    patch.object(gui.save_io, "save_is_stale", return_value=False),
+                    patch.object(gui, "_PlayerWarpDialog", return_value=SimpleNamespace(result=(1, 2, 3))),
+                    patch.object(gui.messagebox, "askyesno", return_value=True),
+                    patch.object(gui.messagebox, "showerror") as error,
+                    patch.object(app, "_save_player_warp",
+                                 side_effect=OSError("backup denied") if state == "write" else None,
+                                 return_value=None if state == "noop" else Path("warp.bak")),
+                    patch.object(app, "_load", return_value=state != "reload") as reload_save,
+                ):
+                    app._warp_player_on_map(WORLD, (1000, 2000, 3))
+                if state == "write":
+                    error.assert_called_once()
+                    reload_save.assert_not_called()
+                    self.assertIn("failed", app.status_var.get())
+                else:
+                    error.assert_not_called()
+                    self.assertIn("reload failed" if state == "reload" else "no save or backup",
+                                  app.status_var.get())
 
     def test_reload_refreshes_positions_on_the_selected_map_and_preserves_filters(self):
         app = self.app

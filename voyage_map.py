@@ -234,6 +234,75 @@ def relocate_actor(
     return bytes(updated)
 
 
+def player_warp_offsets(raw: bytes, point: MapPoint) -> tuple[int, int]:
+    """Validate the unattached pawn and its cached location before changing either."""
+    if len(raw) < 4 or struct.unpack_from("<I", raw)[0] != len(raw) - 4:
+        raise gvas.GvasError("Invalid save length envelope")
+    if point.layer != "player" or not point.actor.startswith("BP_FirstPersonCharacter"):
+        raise ValueError("Select a world with a saved player, not an object or named location.")
+    root, _ = gvas.read_property_list(raw, gvas.find_root(raw))
+    worlds, _ = humans._struct_records(raw, humans._field(root, "GameProgress"))
+    matches = [world for world in worlds if world.key == point.world]
+    if len(matches) != 1:
+        raise ValueError("The player's world is no longer available; refresh the map.")
+    world = matches[0]
+    persistent = humans._field(world.props, "PersistentActors")
+    players = []
+    for cell in humans._struct_records(raw, persistent)[0]:
+        actors = humans._field(cell.props, "actors", required=False)
+        if actors is None:
+            continue
+        for actor in humans._struct_records(raw, actors)[0]:
+            name = humans._field(actor.props, "ActorName", required=False)
+            if name is not None and humans._string(raw, name).startswith("BP_FirstPersonCharacter"):
+                players.append((cell, actor, humans._string(raw, name)))
+    if len(players) != 1:
+        raise ValueError("A unique saved player is required in this world.")
+    cell, actor, name = players[0]
+    if actor.value_start != point.actor_offset or name != point.actor:
+        raise ValueError("The player no longer matches this map marker; refresh the map.")
+    if cell.key != "pawns":
+        raise ValueError("Player warping currently requires the supported 'pawns' save layout.")
+    for field in ("AttachParent", "AttachTransform"):
+        tag = humans._field(actor.props, field)
+        if (tag.type_name != "OptionalProperty" or tag.size != 4
+                or raw[tag.payload:tag.end] != b"\0" * 4):
+            raise ValueError("The player is attached or seated; leave the vehicle/seat and save first.")
+    for field in ("ComponentTransforms", "ComponentTransformsNonPhysical", "BoneTransforms"):
+        tag = humans._field(actor.props, field)
+        if tag.type_name != "MapProperty" or humans._map_entries(raw, tag):
+            raise ValueError("The player has an unsupported component transform layout.")
+    transform = _packed_transform(actor.props, "Transform")
+    position = struct.unpack_from("<3d", raw, transform.payload)
+    if (not all(math.isfinite(value) for value in position)
+            or tuple(value / 100 for value in position) != point.position):
+        raise ValueError("The player's saved position changed; refresh the map.")
+    player_data = humans._field(world.props, "PlayerData")
+    if player_data.type_name != "StructProperty":
+        raise ValueError("PlayerData is not a supported saved structure.")
+    props, end = gvas.read_property_list(raw, player_data.payload)
+    if end != player_data.end:
+        raise ValueError("PlayerData is incomplete.")
+    location = humans._field(props, "LastLocation")
+    if (location.type_name != "StructProperty" or location.type.first is None
+            or location.type.first.name != "Vector" or location.size != 24):
+        raise ValueError("The cached player location is not a supported saved vector.")
+    return transform.payload, location.payload
+
+
+def warp_player(raw: bytes, point: MapPoint, destination: humans.Position3D) -> bytes:
+    """Patch the pawn position and PlayerData.LastLocation, in meters, in the same world."""
+    if (len(destination) != 3
+            or not all(isinstance(value, (int, float)) and math.isfinite(value)
+                       and math.isfinite(value * 100) for value in destination)):
+        raise ValueError("Destination must contain three finite coordinates in meters.")
+    offsets = player_warp_offsets(raw, point)
+    updated = bytearray(raw)
+    for offset in offsets:
+        struct.pack_into("<3d", updated, offset, *(value * 100 for value in destination))
+    return bytes(updated)
+
+
 def read_map(
     raw: bytes, human_data: humans.HumanData | None = None,
     *, progress: Callable[[str], None] | None = None,

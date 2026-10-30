@@ -456,6 +456,30 @@ share a numbered marker (which may contain several layers): select an object
 in the inspector, or double-click
 the marker to zoom in. **Copy** copies the inspector text.
 
+### Warp the player
+
+Choose **Warp player...**, then click any point on the map. Dragging still pans;
+**Cancel warp** or `Escape` cancels picking. The editor uses the clicked X/Y
+coordinates in meters and opens a destination dialog with an editable **Height Z**.
+The starting height is the player's saved height, **not** the destination's terrain
+or water level. Review the height, click **OK**, then confirm **Warp player and save?**
+to create a backup, write the new position immediately, and reload the map.
+Load that save in the game to use the new position.
+
+**Close the game first.** The map has no terrain, collision or water-depth data:
+an unsafe destination can put the player underground, underwater, inside a building,
+or in midair. Use a known safe height and restore the backup if necessary.
+Only the player moves; ships and other actors do not.
+
+Warping stays within the selected world and requires exactly one saved player,
+the supported `pawns` layout, an unattached player, and empty saved component/bone
+transform maps. Seated/attached players and unsupported layouts are refused;
+leave the vehicle/seat, save in the game, and reload before trying again.
+The warp updates both the pawn transform and `PlayerData.LastLocation`, preserving
+rotation, inventory, progression, other actors, and other worlds. Pending edits,
+stale map/disk data, and backup failures prevent writing. Internal reloads after
+the warp do not trigger Repair and Top Off On Open.
+
 ### Recover a loose human pod or egg
 
 Select one saved human pod or loose human-seed item, then use **Move selected
@@ -475,7 +499,7 @@ The map reports skipped/unsupported positions and unreadable human-pod states
 instead of inventing positions or occupancy. **Refresh map** rebuilds from the
 currently loaded document; **Reload** (`F5`) first reads changes made on disk.
 Changing map filters, layers, selection, zoom, or pan never queues edits or
-writes the save; only the explicit **Move selected to player** action does so.
+writes the save; only confirmed **Warp player** and **Move selected to player** actions do so.
 Reloading a save refreshes the map data; layers and search stay as chosen during
 the current app run.
 
