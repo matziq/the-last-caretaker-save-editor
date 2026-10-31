@@ -2783,7 +2783,7 @@ class LastCaretakerEditor(tk.Tk):
         dialog.grab_set()
         outer = ttk.Frame(dialog, padding=10)
         outer.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(
+        guidance = ttk.Label(
             outer,
             text="Stack size Repair & Top Off sets for each category. Rows marked * also apply to\n"
                  "records that are not carried; other non-carried items use the Not Carried target.\n"
@@ -2791,7 +2791,10 @@ class LastCaretakerEditor(tk.Tk):
                  "Rocket Resources apply only with Top Off Rocket Resources enabled and override other refill amounts.\n"
                  "Higher than default rocket amounts can prevent the rocket from functioning.\n"
                  "Per-item stack sizes at the bottom override item categories, not storage refill.",
-        ).pack(anchor="w", pady=(0, 6))
+            wraplength=560,
+        )
+        guidance.pack(fill=tk.X, pady=(0, 6))
+        guidance.bind("<Configure>", lambda event: guidance.configure(wraplength=max(1, event.width)))
         body = ttk.Frame(outer)
         body.pack(fill=tk.BOTH, expand=True)
         canvas = tk.Canvas(body, highlightthickness=0, borderwidth=0)
@@ -2895,11 +2898,13 @@ class LastCaretakerEditor(tk.Tk):
             dialog.destroy()
             self._configure_repair_targets()
 
+        actions = ttk.Frame(outer)
+        actions.pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(actions, text="Reset to Defaults", command=reset).pack(side=tk.LEFT)
+        ttk.Button(actions, text="Capture From Save", command=capture).pack(side=tk.LEFT, padx=4)
+        ttk.Button(actions, text="Clear Per-Item", command=clear_assets).pack(side=tk.LEFT)
         buttons = ttk.Frame(outer)
         buttons.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(buttons, text="Reset to Defaults", command=reset).pack(side=tk.LEFT)
-        ttk.Button(buttons, text="Capture From Save", command=capture).pack(side=tk.LEFT, padx=4)
-        ttk.Button(buttons, text="Clear Per-Item", command=clear_assets).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT)
         ttk.Button(buttons, text="Save", command=save).pack(side=tk.RIGHT, padx=4)
         dialog.bind("<Escape>", lambda _event: dialog.destroy())

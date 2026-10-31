@@ -3323,6 +3323,32 @@ class ResponsiveGuiTests(unittest.TestCase):
                     item.count,
                 )
 
+    def test_rocket_target_dialog_keeps_save_buttons_and_guidance_visible(self) -> None:
+        app = self.app
+        app.deiconify()
+        app._configure_repair_targets()
+        app.update()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, gui.tk.Toplevel))
+        try:
+            widgets = []
+            pending = list(dialog.winfo_children())
+            while pending:
+                widget = pending.pop()
+                widgets.append(widget)
+                pending.extend(widget.winfo_children())
+            guidance = next(w for w in widgets if isinstance(w, gui.ttk.Label)
+                            and "Higher than default rocket" in str(w.cget("text")))
+            self.assertLessEqual(guidance.winfo_reqheight(), guidance.winfo_height())
+            buttons = [w for w in widgets if isinstance(w, gui.ttk.Button)]
+            self.assertTrue(any(w.cget("text") == "Save" for w in buttons))
+            for button in buttons:
+                self.assertTrue(button.winfo_ismapped())
+                self.assertGreaterEqual(button.winfo_rootx(), dialog.winfo_rootx())
+                self.assertLessEqual(button.winfo_rootx() + button.winfo_width(),
+                                     dialog.winfo_rootx() + dialog.winfo_width())
+        finally:
+            dialog.destroy()
+
     def test_settings_controls_fit_default_and_minimum_window_sizes(self) -> None:
         app = self.app
         app.deiconify()
