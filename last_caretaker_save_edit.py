@@ -695,7 +695,10 @@ def storage_refill_edits(
         if entry.name.startswith("Resources.")
     }
     for record in document.resources:
-        edits[record.entry.offset] = (record.entry, target)
+        if is_rocket_resource(record):
+            edits.pop(record.entry.offset, None)
+        else:
+            edits[record.entry.offset] = (record.entry, target)
     for record in document.resources:
         if not is_refillable_storage(record):
             continue
@@ -1037,6 +1040,9 @@ REPAIR_CATEGORIES: tuple[tuple[str, tuple[str, ...], int, bool], ...] = (
     ("storage.tanks", ("Storage", "Stored Amount"), 50000, False),
     ("storage.health", ("Storage", "Health (raw)"), 10000, False),
     ("storage.extra_damage", ("Storage", "Extra Damage (raw)"), 10000, False),
+    ("rocket.electricity", ("Rocket Resources", "Electricity"), 60000, False),
+    ("rocket.methane", ("Rocket Resources", "Methane"), 3000, False),
+    ("rocket.oxygen", ("Rocket Resources", "Oxygen"), 12000, False),
 )
 REPAIR_CATEGORY_KEYS = tuple(row[0] for row in REPAIR_CATEGORIES)
 _REPAIR_EVERYWHERE = frozenset(row[0] for row in REPAIR_CATEGORIES if row[3])
@@ -1337,17 +1343,24 @@ ROCKET_ACTOR_PREFIX = "BP_Rocket_Functional_C"
 ROCKET_RESOURCE_TARGETS = {"Electricity": 60000, "Methane": 3000, "Oxygen": 12000}
 
 
-def rocket_resource_edits(document: SaveDocument) -> list[tuple[Entry, int]]:
+def is_rocket_resource(record: ResourceAmount) -> bool:
+    return (
+        record.actor.casefold().startswith(ROCKET_ACTOR_PREFIX.casefold())
+        and record.resource.casefold() in {name.casefold() for name in ROCKET_RESOURCE_TARGETS}
+    )
+
+
+def rocket_resource_edits(
+    document: SaveDocument, targets: dict | None = None,
+) -> list[tuple[Entry, int]]:
     """Fill the hidden Functional Rocket's Electricity, Methane and Oxygen amounts."""
-    prefix = ROCKET_ACTOR_PREFIX.casefold()
-    targets = {name.casefold(): value for name, value in ROCKET_RESOURCE_TARGETS.items()}
+    configured = normalize_repair_targets(targets)
     edits: dict[int, tuple[Entry, int]] = {}
     for record in document.resources:
-        target = targets.get(record.resource.casefold())
-        if target is None or not record.actor.casefold().startswith(prefix):
+        if not is_rocket_resource(record):
             continue
-        if float(record.entry.value) != target:
-            edits[record.entry.offset] = (record.entry, target)
+        target = configured[f"rocket.{record.resource.casefold()}"]
+        edits[record.entry.offset] = (record.entry, target)
     return list(edits.values())
 
 

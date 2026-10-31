@@ -692,6 +692,7 @@ class LastCaretakerEditor(tk.Tk):
         repair = section("Repair & Top Off", 1, 0)
         option(repair, "repair_combine_var", "repair_combine", "Combine duplicate carried stacks")
         option(repair, "refill_storage_var", "refill_storage_tanks", "Refill Storage Tanks")
+        option(repair, "refill_rocket_var", "refill_rocket_resources", "Top Off Rocket Resources")
         buttons = ttk.Frame(repair)
         buttons.pack(fill=tk.X, pady=(6, 0))
         ttk.Button(buttons, text="Stack Targets...", command=self._configure_repair_targets).pack(
@@ -699,6 +700,10 @@ class LastCaretakerEditor(tk.Tk):
         ttk.Button(buttons, text="Delete Items...", command=self._configure_deletion_items).pack(side=tk.LEFT)
         help_text(repair, "Stack sizes and exact-name deletion rules apply to both manual and on-open repair. "
                   "Combining and configured deletion run only after the first save succeeds.")
+        help_text(repair, "Rocket amounts are configured under Stack Targets... > Rocket Resources "
+                  "and always override other refill amounts. Defaults: Electricity 60000, Methane 3000, "
+                  "Oxygen 12000. Higher amounts can prevent the rocket from functioning. "
+                  "When disabled, these three rocket resources are left untouched by repair.")
 
         inventory = section("Inventory & Purge", 1, 1)
         option(inventory, "show_empty_items", "show_empty_items", "Show zero-count catalog",
@@ -2248,7 +2253,10 @@ class LastCaretakerEditor(tk.Tk):
             if self.refill_storage_var.get() else []
         )
         seed_edits = save_io.human_seed_time_edits(self.document)
-        rocket_edits = save_io.rocket_resource_edits(self.document)
+        rocket_edits = (
+            save_io.rocket_resource_edits(self.document, configured)
+            if self.refill_rocket_var.get() else []
+        )
         if not owned and not storage_edits and not seed_edits and not rocket_edits:
             messagebox.showinfo(
                 "Nothing to repair",
@@ -2287,11 +2295,17 @@ class LastCaretakerEditor(tk.Tk):
             f"{configured['storage.tanks']}, Health {configured['storage.health']}, "
             f"ExtraDamage {configured['storage.extra_damage']} (Refill Storage Tanks).\n"
             "Every existing Resources.* amount in All Scalars uses the Storage target, "
-            "including NPCs, hidden world actors and backpack Electricity. "
+            "including NPCs, hidden world actors and backpack Electricity, except the rocket's "
+            "Electricity, Methane and Oxygen. "
             "Condition-field protections remain unchanged.\n"
             f"Set {len(rocket_edits)} Functional Rocket resource field(s): "
-            + ", ".join(f"{name} {value}" for name, value in save_io.ROCKET_RESOURCE_TARGETS.items())
-            + ". With Refill Storage Tanks enabled, the Storage amount overrides these rocket targets.",
+            + ", ".join(
+                f"{name} {configured[f'rocket.{name.casefold()}']}"
+                for name in save_io.ROCKET_RESOURCE_TARGETS
+            )
+            + (" (Top Off Rocket Resources enabled; overrides all other repair amounts)."
+               if self.refill_rocket_var.get() else
+               " (Top Off Rocket Resources disabled; these rocket resources are unchanged)."),
         ):
             return
         with _busy_ui(self, "Processing Repair & Top Off...") as progress:
@@ -2307,8 +2321,8 @@ class LastCaretakerEditor(tk.Tk):
         progress("Calculating Repair & Top Off changes...")
         edits = save_io.repair_and_top_off(self.document, owned, configured, overrides)
         edits.extend(seed_edits)
-        edits.extend(rocket_edits)
         edits.extend(storage_edits)
+        edits.extend(rocket_edits)
         for entry, value in edits:
             if value == entry.value:
                 self.pending.pop(entry.offset, None)
@@ -2774,6 +2788,8 @@ class LastCaretakerEditor(tk.Tk):
             text="Stack size Repair & Top Off sets for each category. Rows marked * also apply to\n"
                  "records that are not carried; other non-carried items use the Not Carried target.\n"
                  "Storage refill amount applies only with Refill Storage Tanks enabled, independent of item selection.\n"
+                 "Rocket Resources apply only with Top Off Rocket Resources enabled and override other refill amounts.\n"
+                 "Higher than default rocket amounts can prevent the rocket from functioning.\n"
                  "Per-item stack sizes at the bottom override item categories, not storage refill.",
         ).pack(anchor="w", pady=(0, 6))
         body = ttk.Frame(outer)
@@ -3231,6 +3247,7 @@ class LastCaretakerEditor(tk.Tk):
             "purge_include_world": self.purge_include_world.get(),
             "map_layers": {key: var.get() for key, var in self.map_view.layer_vars.items()},
             "refill_storage_tanks": self.refill_storage_var.get(),
+            "refill_rocket_resources": self.refill_rocket_var.get(),
             "repair_stack_targets": save_io.normalize_repair_targets(self.repair_targets),
             "repair_asset_targets": save_io.normalize_asset_targets(self.repair_asset_targets),
             "repair_delete_items": save_io.normalize_deletion_items(self.repair_delete_items),

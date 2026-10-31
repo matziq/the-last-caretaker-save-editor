@@ -709,13 +709,51 @@ class RocketResourceTests(unittest.TestCase):
         )
         self.assertTrue(all(not editor.is_refillable_storage(record) for record in records[:3]))
 
-    def test_values_already_at_target_are_not_queued(self) -> None:
+    def test_values_already_at_target_still_override_other_pending_edits(self) -> None:
         records = [
             self._record("Electricity", self.ROCKET, 100, 60000.0),
             self._record("Methane", self.ROCKET.lower(), 200, 3000.0),
             self._record("Oxygen", self.ROCKET, 300, 12000.0),
         ]
-        self.assertEqual([], editor.rocket_resource_edits(SimpleNamespace(resources=records)))
+        self.assertEqual(
+            [(r.entry, editor.ROCKET_RESOURCE_TARGETS[r.resource]) for r in records],
+            editor.rocket_resource_edits(SimpleNamespace(resources=records)),
+        )
+
+    def test_configured_targets_and_storage_exclusion(self) -> None:
+        records = [
+            self._record(name, self.ROCKET, offset, 999999)
+            for name, offset in (("Electricity", 100), ("Methane", 200), ("Oxygen", 300))
+        ]
+        other = self._record("Oxygen", "BP_Module_Oxygen_Tank_C_UAID_2", 400, 0)
+        document = SimpleNamespace(resources=records + [other],
+                                   entries=[r.entry for r in records + [other]])
+        self.assertEqual([(other.entry, 999999)], editor.storage_refill_edits(document, 999999))
+        self.assertEqual(
+            [(records[0].entry, 100), (records[1].entry, 200), (records[2].entry, 300)],
+            editor.rocket_resource_edits(document, {
+                "rocket.electricity": 100, "rocket.methane": 200, "rocket.oxygen": 300,
+            }),
+        )
+
+    def test_exact_rocket_amounts_survive_save_reload_with_storage_at_999999(self) -> None:
+        fixture = ResourceAmountTests()
+        actors = [
+            (self.ROCKET, [(name, 999999.0) for name in editor.ROCKET_RESOURCE_TARGETS]),
+            ("BP_Module_Battery_C-123", [("Electricity", 10.0)]),
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "rocket.sav"
+            path.write_bytes(editor.compress_container(fixture._raw(actors)))
+            document = editor.load_save(path)
+            edits = editor.storage_refill_edits(document, 999999)
+            edits.extend(editor.rocket_resource_edits(document))
+            editor.apply_edits(document, edits, make_backup=False)
+            reloaded = editor.load_save(path)
+            self.assertEqual(
+                [60000, 3000, 12000, 999999],
+                [r.entry.value for r in reloaded.resources],
+            )
 
 
 class RepairAndTopOffGuiTests(unittest.TestCase):
@@ -726,6 +764,7 @@ class RepairAndTopOffGuiTests(unittest.TestCase):
         combine: bool = True,
         save_succeeds: bool = True,
         refill: bool = False,
+        rocket: bool = True,
     ):
         count_entry = SimpleNamespace(offset=10, value=1)
         item = SimpleNamespace(
@@ -741,6 +780,7 @@ class RepairAndTopOffGuiTests(unittest.TestCase):
             repair_combine_var=SimpleNamespace(get=lambda: combine),
             confirm_repair_var=SimpleNamespace(get=lambda: True),
             refill_storage_var=SimpleNamespace(get=lambda: refill),
+            refill_rocket_var=SimpleNamespace(get=lambda: rocket),
             repair_targets={"ammo": 7},
             repair_asset_targets={},
             _selected_items=lambda: [item],
@@ -888,20 +928,55 @@ class RepairAndTopOffGuiTests(unittest.TestCase):
             gui.LastCaretakerEditor._repair_and_top_off(app)
         refill.assert_not_called()
 
-    def test_storage_target_overrides_rocket_targets(self) -> None:
+    def test_rocket_targets_override_storage_and_other_pending_edits(self) -> None:
         app, _, entry = self._editor([], refill=True, combine=False)
-        app.repair_targets["storage.tanks"] = 42000
-        resource = editor.Entry(1, 100, "Resources.Methane", "DoubleProperty", 0)
+        app.repair_targets["storage.tanks"] = 999999
         app.document.resources = [
-            editor.ResourceAmount("Methane", "BP_Rocket_Functional_C_UAID_123",
-                                  "", "Other", 20, resource),
+            RocketResourceTests._record(name, RocketResourceTests.ROCKET, offset, value)
+            for name, offset, value in (
+                ("Electricity", 100, 999999), ("Methane", 200, 3000), ("Oxygen", 300, 999999),
+            )
+        ]
+        app.document.entries = [r.entry for r in app.document.resources]
+        app.pending[200] = 999999
+        with (
+            patch.object(gui.messagebox, "askyesno", return_value=True),
+            patch.object(gui.save_io, "repair_and_top_off", return_value=[
+                (entry, 999), (app.document.resources[0].entry, 999999),
+            ]),
+        ):
+            gui.LastCaretakerEditor._repair_and_top_off(app)
+        self.assertEqual(60000, app.pending[100])
+        self.assertNotIn(200, app.pending)
+        self.assertEqual(12000, app.pending[300])
+
+    def test_disabled_rocket_top_off_is_not_refilled_by_storage(self) -> None:
+        app, _, entry = self._editor([], refill=True, rocket=False, combine=False)
+        resource = RocketResourceTests._record("Methane", RocketResourceTests.ROCKET, 100, 9)
+        app.document.resources = [resource]
+        app.document.entries = [resource.entry]
+        app.repair_targets["storage.tanks"] = 999999
+        with (
+            patch.object(gui.messagebox, "askyesno", return_value=True),
+            patch.object(gui.save_io, "rocket_resource_edits") as rocket,
+            patch.object(gui.save_io, "repair_and_top_off", return_value=[(entry, 999)]),
+        ):
+            gui.LastCaretakerEditor._repair_and_top_off(app)
+        rocket.assert_not_called()
+        self.assertEqual({10: 999}, app.pending)
+
+    def test_custom_rocket_amount_is_used(self) -> None:
+        app, _, entry = self._editor([], refill=True, combine=False)
+        app.repair_targets["rocket.methane"] = 2500
+        app.document.resources = [
+            RocketResourceTests._record("Methane", RocketResourceTests.ROCKET, 100, 999999),
         ]
         with (
             patch.object(gui.messagebox, "askyesno", return_value=True),
             patch.object(gui.save_io, "repair_and_top_off", return_value=[(entry, 999)]),
         ):
             gui.LastCaretakerEditor._repair_and_top_off(app)
-        self.assertEqual(42000, app.pending[100])
+        self.assertEqual(2500, app.pending[100])
 
     def test_storage_only_save_can_refill_without_carried_items(self) -> None:
         app, _, _ = self._editor([], refill=True, combine=False)
@@ -1314,6 +1389,7 @@ class AssetStackTargetTests(unittest.TestCase):
             repair_asset_targets={"Bio Flesh": 5000},
             confirm_repair_var=SimpleNamespace(get=lambda: True),
             refill_storage_var=SimpleNamespace(get=lambda: False),
+            refill_rocket_var=SimpleNamespace(get=lambda: True),
             _selected_items=lambda: [item],
             _sync_document=lambda: True,
             _refresh_values=lambda: events.append("refresh"),
@@ -1420,6 +1496,7 @@ class DeletionItemsTests(unittest.TestCase):
             repair_delete_items=["Metal Scraps"],
             confirm_repair_var=SimpleNamespace(get=lambda: True),
             refill_storage_var=SimpleNamespace(get=lambda: False),
+            refill_rocket_var=SimpleNamespace(get=lambda: True),
             _selected_items=lambda: [item],
             _sync_document=lambda: True,
             _refresh_values=lambda: events.append("refresh"),
@@ -3166,6 +3243,11 @@ class ResponsiveGuiTests(unittest.TestCase):
             checkboxes["Auto Load Latest Save"].invoke()
             checkboxes["Repair and Top Off On Open"].invoke()
             checkboxes["Combine duplicate carried stacks"].invoke()
+            checkboxes["Top Off Rocket Resources"].invoke()
+            app._apply_repair_targets({
+                key: str(2500 if key == "rocket.methane" else value)
+                for key, value in app.repair_targets.items()
+            })
             checkboxes["Show zero-count catalog"].invoke()
             checkboxes["Include environment/world in Purge"].invoke()
             app.map_view.layer_checks["player"].invoke()
@@ -3173,6 +3255,7 @@ class ResponsiveGuiTests(unittest.TestCase):
             for key, expected in (
                 ("auto_load_latest_save", False), ("repair_on_open", True),
                 ("repair_combine", False), ("show_empty_items", False),
+                ("refill_rocket_resources", False),
                 ("purge_include_world", False),
             ):
                 self.assertIs(saved[key], expected)
@@ -3187,6 +3270,8 @@ class ResponsiveGuiTests(unittest.TestCase):
                 self.assertFalse(restored.auto_load_latest_var.get())
                 self.assertTrue(restored.repair_on_open_var.get())
                 self.assertFalse(restored.repair_combine_var.get())
+                self.assertFalse(restored.refill_rocket_var.get())
+                self.assertEqual(2500, restored.repair_targets["rocket.methane"])
                 self.assertFalse(restored.show_empty_items.get())
                 self.assertFalse(restored.purge_include_world.get())
                 self.assertFalse(restored.map_view.layer_vars["player"].get())
@@ -4046,18 +4131,18 @@ class ResourceAmountTests(unittest.TestCase):
             payload,
         )
 
-    def _raw(self):
+    def _raw(self, actors=None):
         header = (
             b"GVAS" + struct.pack("<iiiHHHI", 3, 0, 0, 5, 4, 0, 0)
             + editor._pack_fstring("test") + struct.pack("<ii", 3, 0)
             + editor._pack_fstring("/Script/Voyage.TestSave")
         )
         props = b""
-        for actor, values in (
+        for actor, values in (actors if actors is not None else (
             ("BP_Boat_Barge_C1031LevelInstanceBP_Module_Petrol_Container_C_0", [("Diesel", 2000.0)]),
             ("BP_Module_Battery_C-123", [("Electricity", 1960.3122993827958)]),
             ("BP_Module_Petrol_Container_C-456", [("Petrol", 253.6095386722867), ("Oil", 0.0)]),
-        ):
+        )):
             props += editor._pack_tag(
                 "ActorName", editor._pack_type("StrProperty"), editor._pack_fstring(actor),
             )
@@ -4399,9 +4484,12 @@ class ResourceAmountGuiTests(unittest.TestCase):
             app._queue(damage, "1")
             self.assertEqual("1", app.resource_tree.set("100", "damage"))
             self.assertTrue(app.refill_storage_var.get())
+            self.assertTrue(app.refill_rocket_var.get())
             app.confirm_purge_var.set(False)
             app.confirm_repair_var.set(False)
             app.refill_storage_var.set(False)
+            app.refill_rocket_var.set(False)
+            app.repair_targets["rocket.methane"] = 2500
             app.repair_targets["storage.tanks"] = 31000
             with tempfile.TemporaryDirectory() as folder:
                 settings_path = Path(folder) / "settings.json"
@@ -4409,6 +4497,8 @@ class ResourceAmountGuiTests(unittest.TestCase):
                     self.assertTrue(app._write_settings())
                     settings = gui._load_settings()
                 self.assertFalse(settings["refill_storage_tanks"])
+                self.assertFalse(settings["refill_rocket_resources"])
+                self.assertEqual(2500, settings["repair_stack_targets"]["rocket.methane"])
                 self.assertFalse(settings["confirm_purge"])
                 self.assertFalse(settings["confirm_repair"])
                 self.assertEqual(31000, settings["repair_stack_targets"]["storage.tanks"])

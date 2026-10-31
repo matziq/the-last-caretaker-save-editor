@@ -112,7 +112,8 @@ browse to any compatible `.sav` manually.
   **Repair & Top Off**, with **Refill Storage Tanks** enabled (default),
   sets **Stored Amount to 50000**, **Health to 10000**, and **ExtraDamage to
   10000** for eligible container condition fields. **Every existing
-  `Resources.*` amount in All Scalars** is set to the Stored Amount target,
+  `Resources.*` amount in All Scalars**, except the rocket's three dedicated
+  resources described below, is set to the Stored Amount target,
   including NPCs, hidden `_C_UAID_` actors, generators, backpack Electricity
   (even an infinite saved amount), zero entries, and amounts above the target.
   NPCs, hidden world actors and infinite backpack Electricity retain their
@@ -164,12 +165,17 @@ browse to any compatible `.sav` manually.
   rule. Every `TimeLeft` field of type `FloatProperty` owned by an actor
   named `BP_Item_HumanSeed_*` is set to **99999**, regardless of inventory
   selection or the Refill Storage Tanks checkbox. Other timers are unchanged.
-  The hidden Functional Rocket (`BP_Rocket_Functional_C_UAID_*`) is also
-  filled every run, regardless of selection or Refill Storage Tanks:
+  **Settings > Top Off Rocket Resources** is enabled by default and persists.
+  It sets the hidden Functional Rocket (`BP_Rocket_Functional_C_UAID_*`) to
   `Resources.Electricity` **60000**, `Resources.Methane` **3000**, and
-  `Resources.Oxygen` **12000** when Storage refill is disabled. When enabled,
-  the Storage Stored Amount target takes precedence for every rocket resource
-  too. Hidden actors' condition fields remain unchanged.
+  `Resources.Oxygen` **12000**, regardless of selection or Refill Storage Tanks.
+  These exact amounts **take precedence over all other Repair & Top Off amounts**,
+  even when Storage is set to 999999 or the saved rocket is already overfilled.
+  Change them under **Settings > Stack Targets... > Rocket Resources**.
+  Higher than default amounts can prevent the rocket from functioning.
+  With rocket top-off disabled, these three rocket resources are left untouched
+  by Repair & Top Off, including general Storage refill. Other existing rocket
+  resources still follow Storage settings. Hidden actors' condition fields remain unchanged.
   The repair is written immediately; when **Settings > Combine duplicate carried
   stacks** is enabled (the default), duplicate carried stacks are then
   combined automatically and that change is written separately. **Remove Duplicate
