@@ -4267,6 +4267,36 @@ class ResourceAmountTests(unittest.TestCase):
         self.assertEqual(0, editor.parse_value(entry, "0"))
 
 
+class ParserPerformanceTests(unittest.TestCase):
+    def test_recovered_names_match_previous_search_for_valid_and_invalid_fields(self):
+        def previous(data, offset):
+            if offset < 6 or data[offset - 1] != 0:
+                return None
+            for length in range(1, editor._MAX_NAME_LEN + 1):
+                start = offset - 1 - length
+                if start < 4:
+                    break
+                if struct.unpack_from("<i", data, start - 4)[0] == length + 1:
+                    body = data[start:offset - 1]
+                    if all(0x20 <= byte < 0x7F for byte in body):
+                        return editor._strip_blueprint_suffix(body.decode("ascii"))
+            return None
+        for name in ("Health", "ActorName", "x" * editor._MAX_NAME_LEN,
+                     "", "bad\nname", "embedded\0name", "x" * (editor._MAX_NAME_LEN + 1)):
+            raw = b"prefix" + editor._pack_fstring(name)
+            with self.subTest(name=name):
+                self.assertEqual(previous(raw, len(raw)), editor._recover_name_before(raw, len(raw)))
+
+    def test_string_probe_rejects_missing_terminators_before_decoding(self):
+        for raw in (struct.pack("<i", 100000) + b"x" * 100000,
+                    struct.pack("<i", -50000) + b"x\0" * 50000):
+            with self.assertRaisesRegex(gvas.GvasError, "unterminated"):
+                gvas.read_string(raw, 0, require_terminator=True)
+        self.assertEqual(("Test", 9), gvas.read_string(editor._pack_fstring("Test"), 0))
+        utf16 = struct.pack("<i", -3) + "AB\0".encode("utf-16-le")
+        self.assertEqual(("AB", 10), gvas.read_string(utf16, 0))
+
+
 class ScalarFilterPerformanceGuiTests(unittest.TestCase):
     def setUp(self) -> None:
         with (
@@ -4281,6 +4311,28 @@ class ScalarFilterPerformanceGuiTests(unittest.TestCase):
                 self.skipTest(f"Tk unavailable: {exc}")
         self.app.withdraw()
         self.addCleanup(self.app.destroy)
+
+    def test_single_edit_does_not_visit_or_update_all_scalar_rows(self):
+        app = self.app
+        entries = [editor.Entry(i, 100 + i * 8, "Health", "FloatProperty", float(i))
+                   for i in range(10000)]
+        app.document = SimpleNamespace(entries=entries, items=[], path=Path("Slot.sav"))
+        app._populate_scalars()
+        app.scalar_tree.selection_set("500")
+        app.scalar_tree.focus("500")
+        with (
+            patch.object(app.scalar_tree, "get_children",
+                         side_effect=AssertionError("Full scalar refresh on a single edit")),
+            patch.object(app.scalar_tree, "set", wraps=app.scalar_tree.set) as update,
+        ):
+            app._queue(entries[500], "125")
+        update.assert_called_once_with("500", "value", "125")
+        self.assertEqual(("500",), app.scalar_tree.selection())
+        self.assertEqual("500", app.scalar_tree.focus())
+        self.assertEqual(125, app.pending[entries[500].offset])
+        app._queue(entries[500], "500")
+        self.assertNotIn(entries[500].offset, app.pending)
+        self.assertEqual("500", app.scalar_tree.set("500", "value"))
 
     def test_inventory_type_colors_survive_filter_sort_and_pending_value_refresh(self):
         app = self.app

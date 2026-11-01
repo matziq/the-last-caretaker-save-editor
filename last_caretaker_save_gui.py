@@ -2022,26 +2022,47 @@ class LastCaretakerEditor(tk.Tk):
                 f"{stat.st_size:,}", str(path),
             ))
 
-    def _refresh_values(self) -> None:
+    def _refresh_values(self, entries: tuple[save_io.Entry, ...] | None = None) -> None:
         """Update displayed values in place so rows never move or re-sort."""
         if not self.document:
             return
-        for iid in self.progress_tree.get_children():
-            entry = next((e for e in self.document.entries if e.offset == int(iid)), None)
+        by_offset = {e.offset: e for e in (self.document.entries if entries is None else entries)}
+        progress_ids = (
+            self.progress_tree.get_children() if entries is None else
+            [str(e.offset) for e in entries if self.progress_tree.exists(str(e.offset))]
+        )
+        for iid in progress_ids:
+            entry = by_offset.get(int(iid))
             if entry is not None:
                 self.progress_tree.set(iid, "value", self._display_value(entry))
         for iid in self.inventory_tree.get_children():
             item = self.item_rows.get(iid)
             if item is None:
                 continue
+            if entries is not None and not any(e.offset in by_offset for e in item.entries.values()):
+                continue
             self.inventory_tree.set(iid, "count", self._display_value(item.entries.get("ItemCount")))
             self.inventory_tree.set(iid, "health", self._display_value(item.entries.get("Health")))
             self.inventory_tree.set(iid, "variation", self._display_value(item.entries.get("SelectedVariation")))
-        for iid in self.scalar_tree.get_children():
+        scalar_ids = (
+            self.scalar_tree.get_children() if entries is None else
+            [str(e.index) for e in entries if str(e.index) in self.scalar_rows]
+        )
+        for iid in scalar_ids:
             entry = self.scalar_rows.get(iid)
             if entry is not None:
                 self.scalar_tree.set(iid, "value", self._display_value(entry))
         for iid in self.resource_tree.get_children():
+            record = self.resource_records.get(iid)
+            if entries is not None and not any(
+                e is not None and e.offset in by_offset
+                for e in (
+                    self.resource_rows.get(iid),
+                    record.health if record else None,
+                    record.extra_damage if record else None,
+                )
+            ):
+                continue
             entry = self.resource_rows.get(iid)
             if entry is not None:
                 self.resource_tree.set(iid, "value", self._display_value(entry))
@@ -2057,7 +2078,7 @@ class LastCaretakerEditor(tk.Tk):
             self.pending.pop(entry.offset, None)
         else:
             self.pending[entry.offset] = parsed
-        self._refresh_values()
+        self._refresh_values((entry,))
 
     def _edit_progress(self, _event: tk.Event | None = None) -> None:
         selection = self.progress_tree.selection()
@@ -2151,7 +2172,7 @@ class LastCaretakerEditor(tk.Tk):
                 self.pending.pop(entry.offset, None)
             else:
                 self.pending[entry.offset] = new_value
-        self._refresh_values()
+        self._refresh_values(tuple(entries))
 
     def _selected_items(self) -> list[save_io.InventoryItem]:
         return [self.item_rows[iid] for iid in self.inventory_tree.selection() if iid in self.item_rows]
@@ -2178,7 +2199,7 @@ class LastCaretakerEditor(tk.Tk):
                     self.pending.pop(entry.offset, None)
                 else:
                     self.pending[entry.offset] = new_value
-            self._refresh_values()
+            self._refresh_values(tuple(editable))
         except ValueError as exc:
             messagebox.showerror("Invalid value", str(exc))
 
@@ -2996,7 +3017,7 @@ class LastCaretakerEditor(tk.Tk):
             parsed = [(entry, save_io.parse_value(entry, value)) for entry in entries]
             for entry, new_value in parsed:
                 self.pending[entry.offset] = new_value
-            self._refresh_values()
+            self._refresh_values(tuple(entries))
         except ValueError as exc:
             messagebox.showerror("Invalid value", str(exc))
 

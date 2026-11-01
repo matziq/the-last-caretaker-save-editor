@@ -106,7 +106,7 @@ _TAG_KNOWN_FLAGS = 0x1F
 EXT_OVERRIDABLE_INFORMATION = 0x01
 
 
-def read_string(raw: bytes, off: int) -> Tuple[str, int]:
+def read_string(raw: bytes, off: int, *, require_terminator: bool = False) -> Tuple[str, int]:
     """Read an Unreal FString.  Handles ASCII and UTF-16 (negative length)."""
     if off < 0 or off + 4 > len(raw):
         raise GvasError(f"string length out of range at {off}")
@@ -117,17 +117,23 @@ def read_string(raw: bytes, off: int) -> Tuple[str, int]:
     if count > 0:
         if count > _MAX_STRING or off + count > len(raw):
             raise GvasError(f"implausible string length {count} at {off - 4}")
+        if require_terminator and raw[off + count - 1] != 0:
+            raise GvasError(f"unterminated string at {off - 4}")
         return raw[off:off + count - 1].decode("utf-8", "replace"), off + count
     size = -count * 2
     if size > _MAX_STRING or off + size > len(raw):
         raise GvasError(f"implausible utf16 length {count} at {off - 4}")
+    if require_terminator and raw[off + size - 2:off + size] != b"\0\0":
+        raise GvasError(f"unterminated utf16 string at {off - 4}")
     return raw[off:off + size - 2].decode("utf-16-le", "replace"), off + size
 
 
-def read_type_node(raw: bytes, off: int, depth: int = 0) -> Tuple[TypeNode, int]:
+def read_type_node(
+    raw: bytes, off: int, depth: int = 0, *, require_terminator: bool = False,
+) -> Tuple[TypeNode, int]:
     if depth > 8:
         raise GvasError("type tree too deep")
-    name, off = read_string(raw, off)
+    name, off = read_string(raw, off, require_terminator=require_terminator)
     if off + 4 > len(raw):
         raise GvasError(f"type child count out of range at {off}")
     (count,) = struct.unpack_from("<i", raw, off)
@@ -136,18 +142,20 @@ def read_type_node(raw: bytes, off: int, depth: int = 0) -> Tuple[TypeNode, int]
         raise GvasError(f"implausible type child count {count} at {off - 4}")
     children = []
     for _ in range(count):
-        node, off = read_type_node(raw, off, depth + 1)
+        node, off = read_type_node(raw, off, depth + 1, require_terminator=require_terminator)
         children.append(node)
     return TypeNode(name, tuple(children)), off
 
 
-def read_tag(raw: bytes, off: int) -> Tuple[Optional[PropertyTag], int]:
+def read_tag(
+    raw: bytes, off: int, *, require_terminator: bool = False,
+) -> Tuple[Optional[PropertyTag], int]:
     """Read one property tag.  Returns ``(None, end)`` for the ``None`` terminator."""
     start = off
-    name, off = read_string(raw, off)
+    name, off = read_string(raw, off, require_terminator=require_terminator)
     if name == _NONE:
         return None, off
-    node, off = read_type_node(raw, off)
+    node, off = read_type_node(raw, off, require_terminator=require_terminator)
     if off + 5 > len(raw):
         raise GvasError(f"tag header out of range at {off}")
     (size,) = struct.unpack_from("<i", raw, off)
@@ -640,7 +648,7 @@ def _walk_item_maps(
                 # this branch instead of reading into unrelated data.
                 return
             try:
-                tag, _after = read_tag(raw, off)
+                tag, _after = read_tag(raw, off, require_terminator=True)
             except GvasError:
                 return
             if tag is None:
@@ -715,7 +723,7 @@ def _walk_item_maps(
                 blob = tag.payload + 4
                 for pad in range(0, 9):
                     try:
-                        probe, _ = read_tag(raw, blob + pad)
+                        probe, _ = read_tag(raw, blob + pad, require_terminator=True)
                     except GvasError:
                         continue
                     if probe is not None and probe.type_name.endswith("Property") and probe.end <= tag.end:

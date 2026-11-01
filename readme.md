@@ -131,6 +131,10 @@ browse to any compatible `.sav` manually.
   Consumable battery items
   without a saved `Resources` entry have no separate editable charge here.
 - **All Scalars**: editable serialized scalar values with one full-row text filter.
+  Single-value edits update only affected rows across the editor instead of
+  refreshing the entire scalar table. Large-save parsing rejects invalid string
+  probes before decoding them and locates scalar field names without a
+  byte-by-byte backward search. Save validation and stale-file checks remain active.
 - **Inventory**: saved item, material, and equipment records with separate
   full-row text filter. Inventory, Container Resources, and All Scalars each
   have one filter searching names, types, values, locations, actors, and other

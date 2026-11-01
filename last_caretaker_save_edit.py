@@ -157,16 +157,16 @@ def _read_fstring(data: bytes, offset: int) -> str | None:
 def _recover_name_before(data: bytes, type_offset: int) -> str | None:
     if type_offset < 6 or data[type_offset - 1] != 0:
         return None
-    for length in range(1, _MAX_NAME_LEN + 1):
-        body_start = type_offset - 1 - length
-        length_offset = body_start - 4
-        if length_offset < 0:
-            break
-        if struct.unpack_from("<i", data, length_offset)[0] != length + 1:
-            continue
-        body = data[body_start:type_offset - 1]
-        if all(0x20 <= byte < 0x7F for byte in body):
-            return _strip_blueprint_suffix(body.decode("ascii"))
+    body_start = data.rfind(b"\0", max(0, type_offset - _MAX_NAME_LEN - 2), type_offset - 1) + 1
+    length = type_offset - 1 - body_start
+    length_offset = body_start - 4
+    if length_offset < 0 or not 1 <= length <= _MAX_NAME_LEN:
+        return None
+    if struct.unpack_from("<i", data, length_offset)[0] != length + 1:
+        return None
+    body = data[body_start:type_offset - 1]
+    if all(0x20 <= byte < 0x7F for byte in body):
+        return _strip_blueprint_suffix(body.decode("ascii"))
     return None
 
 
