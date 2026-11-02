@@ -455,7 +455,14 @@ labelled squares, color-coded by type: caves, gyrocopter platforms, towers,
 stations/facilities, outposts, reserves/vaults, habitat nodes, NDN growth nodes,
 graves, docks/platforms, silos, quarantine stacks, navigation beacons, and other
 landmarks. The **Type** column and object details name the category, so color is
-not the only way to distinguish sites. **Map > Layers** includes the color legend.
+not the only way to distinguish sites. In **Map > Layers**, select one or more
+types in the color legend to show only those named locations on the map. This
+enables the Named locations layer and temporarily hides other layers without
+changing their settings. The map's Find filter still applies. Uncheck the last
+type or use **Show all types** to restore the normal layer view; **Clear** also
+clears the type selection. The **Sites / boats** list remains independent of
+map filters. Selecting a list entry outside the chosen types clears the type
+filter so that entry can be shown.
 Classification uses game identifiers as well as display names: for example,
 First Whisper and North Lantern are caves even though their names do not say so.
 The save stores only these places' identities and flags in

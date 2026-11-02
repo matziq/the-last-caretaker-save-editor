@@ -174,12 +174,25 @@ class SaveMapView(ttk.Frame):
             for widget in (row, dot, check):
                 widget.bind("<MouseWheel>", self._scroll_layers)
             self.layer_vars[key], self.layer_checks[key] = var, check
-        ttk.Label(layers, text="Named location types").pack(anchor=tk.W, pady=(12, 4))
-        self.location_legend: dict[str, tk.Label] = {}
+        ttk.Label(layers, text="Named location types (none = all)").pack(anchor=tk.W, pady=(12, 4))
+        self.show_all_types_button = ttk.Button(
+            layers, text="Show all types", command=self._clear_location_type_filter,
+            state=tk.DISABLED,
+        )
+        self.show_all_types_button.pack(anchor=tk.W, pady=(0, 4))
+        self.location_type_vars: dict[str, tk.BooleanVar] = {}
+        self.location_legend: dict[str, tk.Checkbutton] = {}
         for key, label, color in LOCATION_TYPES:
-            legend = tk.Label(layers, text=f"\u25a0 {label}", foreground=color, anchor=tk.W)
+            var = tk.BooleanVar(value=False)
+            legend = tk.Checkbutton(
+                layers, text=f"\u25a0 {label}", foreground=color, activeforeground=color, anchor=tk.W,
+                variable=var, command=self._location_types_changed,
+                cursor="hand2", takefocus=True,
+            )
             legend.pack(fill=tk.X)
             legend.bind("<MouseWheel>", self._scroll_layers)
+            legend.bind("<Return>", lambda _event, widget=legend: (widget.invoke(), "break")[1])
+            self.location_type_vars[key] = var
             self.location_legend[key] = legend
         self.details_tab.columnconfigure(0, weight=1)
         self.details_tab.rowconfigure(4, weight=1)
@@ -228,9 +241,32 @@ class SaveMapView(ttk.Frame):
         self.reset()
 
     def _layers_changed(self) -> None:
+        if not self.layer_vars["locations"].get():
+            self._reset_location_type_filter()
         self.apply_filter()
         if self.on_layers_changed is not None:
             self.on_layers_changed()
+
+    def _selected_location_types(self) -> set[str]:
+        return {key for key, var in self.location_type_vars.items() if var.get()}
+
+    def _reset_location_type_filter(self) -> None:
+        for var in self.location_type_vars.values():
+            var.set(False)
+        self.show_all_types_button.configure(state=tk.DISABLED)
+
+    def _clear_location_type_filter(self) -> None:
+        self._reset_location_type_filter()
+        self.apply_filter(fit=True)
+
+    def _location_types_changed(self) -> None:
+        selected = self._selected_location_types()
+        self.show_all_types_button.configure(state=tk.NORMAL if selected else tk.DISABLED)
+        if selected and not self.layer_vars["locations"].get():
+            self.layer_vars["locations"].set(True)
+            if self.on_layers_changed is not None:
+                self.on_layers_changed()
+        self.apply_filter(fit=True)
 
     def _scroll_layers(self, event) -> str:
         self.layer_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
@@ -239,6 +275,7 @@ class SaveMapView(ttk.Frame):
     def reset(self, message: str = "Load a save, then open Map to read saved positions.") -> None:
         self._cancel_warp()
         self.warp_button.configure(state=tk.DISABLED)
+        self._reset_location_type_filter()
         self.data = None
         self._populate_location_list()
         self.visible = []
@@ -258,6 +295,7 @@ class SaveMapView(ttk.Frame):
 
     def clear_filter(self) -> None:
         self.query.set("")
+        self._reset_location_type_filter()
         self.apply_filter(fit=True)
 
     def apply_filter(self, *, fit: bool = False, refresh_list: bool = True) -> None:
@@ -275,18 +313,25 @@ class SaveMapView(ttk.Frame):
         for key, label, _color, _enabled in LAYERS:
             self.layer_checks[key].configure(text=f"{label} ({counts[key]:,})")
         enabled = {key for key, var in self.layer_vars.items() if var.get()}
+        selected_types = self._selected_location_types()
         query = self.query.get().strip()
         self.visible = [point for point in world_points
-                        if point.layer in enabled and self.matches_filter(query, point.searchable)]
+                        if point.layer in enabled
+                        and (not selected_types or (
+                            point.layer == "locations" and point.location_type in selected_types))
+                        and self.matches_filter(query, point.searchable)]
         visible_keys = {point.key for point in self.visible}
         remaining = [point for point in self.selected_group if point.key in visible_keys]
         if remaining != self.selected_group:
             self._select_group(remaining)
         warning = f" | {len(self.data.warnings):,} pod state(s) unavailable" if self.data.warnings else ""
         notice = "".join(f" | {text}" for text in self.data.notices)
+        type_names = [label for key, label, _color in LOCATION_TYPES if key in selected_types]
+        type_status = f" | Location types only: {', '.join(type_names)}" if type_names else ""
         self.status.set(
             f"{len(self.visible):,} matching objects / {len(world_points):,} mapped in this world"
-            f" | {self.data.skipped_positions:,} actor(s) without supported positions{warning}{notice}")
+            f" | {self.data.skipped_positions:,} actor(s) without supported positions"
+            f"{type_status}{warning}{notice}")
         if fit:
             self.fit_visible()
         else:
@@ -320,6 +365,9 @@ class SaveMapView(ttk.Frame):
         point = self.location_rows.get(selected[0]) if selected else None
         if point is None or self.data is None:
             return
+        selected_types = self._selected_location_types()
+        if selected_types and (point.layer != "locations" or point.location_type not in selected_types):
+            self._reset_location_type_filter()
         self.query.set("")
         self.layer_vars[point.layer].set(True)
         self.apply_filter(refresh_list=False)

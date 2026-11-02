@@ -772,6 +772,161 @@ class MapViewTests(unittest.TestCase):
             self.assertEqual(point.color, str(view.location_tree.tag_configure(
                 point.location_type, "foreground")))
             self.assertEqual(point.color, view.location_legend[point.location_type].cget("foreground"))
+            self.assertEqual(point.color, view.location_legend[point.location_type].cget("activeforeground"))
+
+    def _legend_filter_points(self):
+        return (
+            self.points[0],
+            self.points[3],
+            maps.MapPoint("cave1", WORLD, "Cave01", "First Whisper", "locations",
+                          (100, 100, 1), location_type="caves", in_save=False),
+            maps.MapPoint("cave2", WORLD, "Cave02", "Grey Mouth", "locations",
+                          (200, 100, 2), location_type="caves", in_save=True),
+            maps.MapPoint("gyro", WORLD, "GyroPlatform", "Gyrocopter platform", "locations",
+                          (300, 100, 3), location_type="gyrocopter"),
+            maps.MapPoint("tower", WORLD, "Tower", "Unlisted Tower", "locations",
+                          (400, 100, 4), location_type="towers"),
+            maps.MapPoint("boat", WORLD, "BP_Boat_Barge_C1031", "Boat Barge", "boats",
+                          (500, 100, 5)),
+            maps.MapPoint("other-cave", "other-world", "Cave03", "Far cave", "locations",
+                          (600, 100, 6), location_type="caves"),
+        )
+
+    def test_legend_filters_multiple_types_without_changing_other_layer_settings(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        view.layer_vars["locations"].set(False)
+        view.layer_vars["containers"].set(True)
+        view.apply_filter()
+        original_layers = {key: var.get() for key, var in view.layer_vars.items()}
+        changed = view.on_layers_changed = Mock()
+
+        view.location_legend["caves"].invoke()
+        self.assertEqual({"cave1", "cave2"}, {point.key for point in view.visible})
+        self.assertEqual({"caves"}, view._selected_location_types())
+        self.assertTrue(view.layer_vars["locations"].get())
+        self.assertEqual((150, 100), (view.camera.x, view.camera.y))
+        self.assertIn("Location types only: Caves", view.status.get())
+        self.assertEqual(tk.NORMAL, str(view.show_all_types_button["state"]))
+        changed.assert_called_once_with()
+        view.draw()
+        self.assertEqual({"cave1", "cave2"},
+                         {point.key for group in view.groups.values() for point in group})
+
+        view.location_legend["gyrocopter"].invoke()
+        self.assertEqual({"cave1", "cave2", "gyro"}, {point.key for point in view.visible})
+        self.assertIn("Caves, Gyrocopter platforms", view.status.get())
+        view.location_legend["caves"].invoke()
+        self.assertEqual({"gyro"}, {point.key for point in view.visible})
+        view.location_legend["gyrocopter"].invoke()
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertEqual(tk.DISABLED, str(view.show_all_types_button["state"]))
+        self.assertEqual({"p", "c", "cave1", "cave2", "gyro", "tower", "boat"},
+                         {point.key for point in view.visible})
+        for key, was_enabled in original_layers.items():
+            if key != "locations":
+                self.assertEqual(was_enabled, view.layer_vars[key].get(), key)
+        changed.assert_called_once_with()
+
+    def test_show_all_clear_reset_and_layer_toggle_remove_the_type_filter(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        view.query.set("First Whisper")
+        view.location_legend["caves"].invoke()
+        self.assertEqual(["cave1"], [point.key for point in view.visible])
+        view.show_all_types_button.invoke()
+        self.assertEqual("First Whisper", view.query.get())
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertEqual(["cave1"], [point.key for point in view.visible])
+
+        view.location_legend["caves"].invoke()
+        view.location_legend["towers"].invoke()
+        view.clear_filter()
+        self.assertEqual("", view.query.get())
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertIn("p", {point.key for point in view.visible})
+
+        view.location_legend["caves"].invoke()
+        view.layer_checks["locations"].invoke()
+        self.assertFalse(view.layer_vars["locations"].get())
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertIn("p", {point.key for point in view.visible})
+        self.assertNotIn("cave1", {point.key for point in view.visible})
+
+        view.location_legend["caves"].invoke()
+        view.reset()
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertEqual(tk.DISABLED, str(view.show_all_types_button["state"]))
+
+    def test_legend_filter_keeps_world_and_search_filters_and_reports_empty_results(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        view.location_legend["caves"].invoke()
+        view.query.set("Grey")
+        view.apply_filter()
+        self.assertEqual(["cave2"], [point.key for point in view.visible])
+        view.world_var.set("other-world")
+        view.apply_filter(fit=True)
+        self.assertEqual([], view.visible)
+        self.assertIn("0 matching objects", view.status.get())
+        self.assertIn("Location types only: Caves", view.status.get())
+        view.query.set("")
+        view.apply_filter()
+        self.assertEqual(["other-cave"], [point.key for point in view.visible])
+
+    def test_site_list_stays_independent_and_selecting_a_hidden_type_clears_filter(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        view.location_legend["caves"].invoke()
+        self.assertEqual({"cave1", "cave2", "gyro", "tower"},
+                         {point.key for point in view.location_rows.values()})
+        cave_row = next(iid for iid, point in view.location_rows.items() if point.key == "cave1")
+        view.location_tree.selection_set(cave_row)
+        view._show_list_point()
+        self.assertEqual({"caves"}, view._selected_location_types())
+        self.assertIn("cave1", {point.key for point in view.visible})
+
+        tower_row = next(iid for iid, point in view.location_rows.items() if point.key == "tower")
+        view.location_tree.selection_set(tower_row)
+        view._show_list_point()
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertEqual("tower", view.selected.key)
+        self.assertIn("tower", {point.key for point in view.visible})
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
+
+        view.location_legend["caves"].invoke()
+        view.list_scope.set("Boats")
+        view._populate_location_list()
+        view.location_tree.selection_set("0")
+        view._show_list_point()
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertEqual("boat", view.selected.key)
+        self.assertIn("boat", {point.key for point in view.visible})
+
+    def test_legend_controls_are_focusable_clickable_and_keyboard_activatable(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        self.root.deiconify()
+        view.inspector.select(view.layers_tab)
+        view.layer_canvas.yview_moveto(1)
+        self.root.update()
+        cave = view.location_legend["caves"]
+        self.assertEqual("hand2", cave.cget("cursor"))
+        self.assertTrue(int(cave.cget("takefocus")))
+        self.assertTrue(cave.bind("<Return>"))
+        cave.event_generate("<Enter>", x=15, y=15)
+        cave.event_generate("<ButtonPress-1>", x=15, y=15)
+        cave.event_generate("<ButtonRelease-1>", x=15, y=15)
+        self.root.update()
+        self.assertEqual({"caves"}, view._selected_location_types())
+        cave.focus_force()
+        self.root.update()
+        cave.event_generate("<KeyPress-Return>")
+        self.root.update()
+        self.assertEqual(set(), view._selected_location_types())
+        cave.event_generate("<KeyPress-space>")
+        self.root.update()
+        self.assertEqual({"caves"}, view._selected_location_types())
 
     def test_individual_cluster_selection_and_single_marker_double_click_zoom_full(self):
         view = self.view
