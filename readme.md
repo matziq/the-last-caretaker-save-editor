@@ -48,6 +48,20 @@ save folder so you can select a different save. Use **Refresh** to rescan.
 No Windows username or save path is bundled with the application. You can also
 browse to any compatible `.sav` manually.
 
+**Copy AutoSave to Manual...** beside Reload is enabled when the loaded save's
+filename contains `AutoSave` (case-insensitive). With the game closed, use it to
+replace a manual `.sav` in the same folder with the AutoSave's exact on-disk
+contents. If there are multiple manual saves, a picker lists them newest first;
+otherwise the single manual save is selected automatically. A final confirmation
+shows both full paths. Pending edits must be saved or discarded first.
+
+The AutoSave is backed up first, then the previous manual save is backed up,
+using **Settings > Backups > Keep backups** for each file. A backup failure,
+invalid/stale AutoSave, or a file changing during the copy prevents replacement.
+The manual save is replaced atomically; the AutoSave stays unchanged and remains
+open in the editor. No manual slot is created if none exists: create one in the
+game first. This is a byte-for-byte copy, not a conversion of the AutoSave layout.
+
 ## Features
 
 - **Settings** centralizes editor options: startup behavior,

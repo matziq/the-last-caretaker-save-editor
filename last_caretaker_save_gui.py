@@ -496,6 +496,30 @@ class _PlayerWarpDialog(simpledialog.Dialog):
         return True
 
 
+class _ManualSaveDialog(simpledialog.Dialog):
+    def __init__(self, parent, candidates: list[Path]) -> None:
+        self.candidates = candidates
+        super().__init__(parent, "Choose manual save to overwrite")
+
+    def body(self, master):
+        ttk.Label(
+            master, text="Select the manual save to replace. Newest is listed first.",
+        ).pack(anchor=tk.W, pady=(0, 8))
+        self.slots = ttk.Combobox(
+            master, state="readonly", width=72,
+            values=[
+                f"{path.name}  |  {datetime.fromtimestamp(path.stat().st_mtime):%Y-%m-%d %H:%M:%S}"
+                for path in self.candidates
+            ],
+        )
+        self.slots.pack(fill=tk.X)
+        self.slots.current(0)
+        return self.slots
+
+    def apply(self) -> None:
+        self.result = self.candidates[self.slots.current()]
+
+
 class LastCaretakerEditor(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -577,6 +601,11 @@ class LastCaretakerEditor(tk.Tk):
         ttk.Button(actions, text="Browse...", command=self._open).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions, text="Save Changes", command=self._save).pack(side=tk.LEFT, padx=(10, 2))
         ttk.Button(actions, text="Reload", command=lambda: self._reload(prompt=True)).pack(side=tk.LEFT, padx=2)
+        self.copy_autosave_button = ttk.Button(
+            actions, text="Copy AutoSave to Manual...", command=self._copy_autosave_to_manual,
+            state="disabled",
+        )
+        self.copy_autosave_button.pack(side=tk.LEFT, padx=(10, 2))
 
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=8)
@@ -1637,6 +1666,11 @@ class LastCaretakerEditor(tk.Tk):
         elif labels:
             self.save_var.set(labels[0])
         self.status_var.set(f"Found {len(labels)} save(s)")
+        self._update_copy_autosave_button()
+
+    def _update_copy_autosave_button(self) -> None:
+        enabled = self.document and "autosave" in self.document.path.name.casefold()
+        self.copy_autosave_button.configure(state="normal" if enabled else "disabled")
 
     def _select_save(self, _event: tk.Event | None = None) -> None:
         value = self.save_var.get()
@@ -1709,6 +1743,7 @@ class LastCaretakerEditor(tk.Tk):
             else:
                 busy("Building the tables...")
                 self.document = document
+                self._update_copy_autosave_button()
                 self.pending.clear()
                 self.human_pending = {}
                 self.human_attribute_pending = {}
@@ -3156,6 +3191,53 @@ class LastCaretakerEditor(tk.Tk):
             f"Write {' and '.join(parts)} to:\n{self.document.path}\n\n"
             + "\n".join(lines) + "\n\n" + details + f"A backup is created first (keep {keep})."
         )
+
+    @_not_while_pumping
+    def _copy_autosave_to_manual(self) -> None:
+        if not self.document or "autosave" not in self.document.path.name.casefold():
+            return
+        if not self._structural_guard():
+            return
+        try:
+            with _busy_ui(self, "Finding manual saves..."):
+                candidates = _run_in_background(
+                    self, save_io.manual_save_candidates, self.document.path)
+            if not candidates:
+                messagebox.showerror(
+                    "No manual saves",
+                    "No manual .sav file was found beside this AutoSave.\n\n"
+                    "Create a manual save in the game, close the game, then try again.",
+                )
+                return
+            destination = candidates[0] if len(candidates) == 1 else _ManualSaveDialog(
+                self, candidates).result
+            if destination is None:
+                return
+            keep = max(1, self.keep_var.get())
+            if not messagebox.askyesno(
+                "Overwrite manual save?",
+                f"Copy the saved AutoSave from:\n{self.document.path}\n\n"
+                f"OVERWRITE this manual save:\n{destination}\n\n"
+                "Both files are backed up first "
+                f"(keep {keep} backups per save). The AutoSave itself is not changed.\n\n"
+                "Continue?",
+            ):
+                return
+            with _busy_ui(self, "Copying AutoSave to manual save..."):
+                if _run_in_background(self, _game_is_running):
+                    messagebox.showerror(
+                        "Game is running", "Close The Last Caretaker before copying a save.")
+                    return
+                _run_in_background(
+                    self, save_io.copy_autosave_to_manual,
+                    self.document, destination, max_backups=keep)
+            self._refresh_saves()
+            self._populate_backups()
+            self.status_var.set(
+                f"Copied {self.document.path.name} to {destination.name}; "
+                "both saves backed up. AutoSave remains open.")
+        except Exception as exc:
+            messagebox.showerror("Copy AutoSave failed", str(exc))
 
     @_not_while_pumping
     def _create_backup(self) -> None:

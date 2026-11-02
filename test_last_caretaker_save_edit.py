@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import struct
 import sys
 import tempfile
@@ -127,6 +128,7 @@ class SaveSelectionTests(unittest.TestCase):
             save_combo=combo,
             save_var=SimpleNamespace(set=selected.append),
             status_var=SimpleNamespace(set=statuses.append),
+            _update_copy_autosave_button=Mock(),
         )
         with patch.object(editor, "discover_saves", return_value=[newest, older]) as discover:
             gui.LastCaretakerEditor._refresh_saves(app)
@@ -134,6 +136,190 @@ class SaveSelectionTests(unittest.TestCase):
         self.assertEqual([str(newest), str(older)], combo["values"])
         self.assertEqual([str(newest)], selected)
         self.assertEqual(["Found 2 save(s)"], statuses)
+
+
+class AutoSaveCopyTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.folder = Path(temp.name)
+        self.source = self.folder / "123_aUtOsAvE_0.sav"
+        self.target = self.folder / "123_0.sav"
+        self.raw = ResourceAmountTests()._raw()
+        self.original = editor.compress_container(self.raw)
+        self.source.write_bytes(self.original)
+        self.target.write_bytes(b"previous manual save")
+        self.document = SimpleNamespace(path=self.source, raw=self.raw)
+
+    def copy(self, **kwargs):
+        return editor.copy_autosave_to_manual(self.document, self.target, **kwargs)
+
+    def test_exact_copy_preserves_source_and_backs_up_both_files_in_order(self):
+        with patch.object(editor, "backup_save", wraps=editor.backup_save) as backup:
+            source_backup, manual_backup = self.copy(max_backups=3)
+        self.assertEqual([(self.source, 3), (self.target, 3)],
+                         [call.args for call in backup.call_args_list])
+        self.assertEqual(self.original, self.source.read_bytes())
+        self.assertEqual(self.original, source_backup.read_bytes())
+        self.assertEqual(self.original, self.target.read_bytes())
+        self.assertEqual(b"previous manual save", manual_backup.read_bytes())
+        self.assertEqual([], list(self.folder.glob("*.editor.tmp")))
+
+    def test_manual_candidates_are_local_case_insensitive_and_newest_first(self):
+        newest = self.folder / "123_1.SAV"
+        newest.write_bytes(b"new")
+        os.utime(self.target, (1, 1))
+        (self.folder / "123_AutoSave_2.sav").write_bytes(b"auto")
+        (self.folder / "123_0.bak.sav").write_bytes(b"backup")
+        other = self.folder / "other-profile"
+        other.mkdir()
+        (other / "999_0.sav").write_bytes(b"other")
+        self.assertEqual([newest, self.target], editor.manual_save_candidates(self.source))
+        self.assertEqual([], editor.manual_save_candidates(self.target))
+
+    def test_bad_source_stale_document_and_invalid_destinations_do_not_back_up(self):
+        outside = self.folder / "other"
+        outside.mkdir()
+        wrong = outside / "slot.sav"
+        wrong.write_bytes(b"other")
+        for destination in (self.source, wrong, self.folder / "missing.sav"):
+            with self.subTest(destination=destination), patch.object(editor, "backup_save") as backup:
+                with self.assertRaises(ValueError):
+                    editor.copy_autosave_to_manual(self.document, destination)
+                backup.assert_not_called()
+        for data, raw in ((b"invalid", self.raw), (self.original, b"stale")):
+            with self.subTest(data=data[:8]), patch.object(editor, "backup_save") as backup:
+                self.source.write_bytes(data)
+                self.document.raw = raw
+                with self.assertRaises((ValueError, RuntimeError)):
+                    self.copy()
+                backup.assert_not_called()
+        self.assertEqual(b"previous manual save", self.target.read_bytes())
+
+    def test_backup_failure_prevents_replacement_for_either_file(self):
+        real_backup = editor.backup_save
+        for fail_path in (self.source, self.target):
+            def backup(path, keep):
+                if path == fail_path:
+                    raise OSError("backup failed")
+                return real_backup(path, keep)
+            with self.subTest(path=fail_path), patch.object(editor, "backup_save", side_effect=backup):
+                with self.assertRaisesRegex(OSError, "backup failed"):
+                    self.copy()
+                self.assertEqual(b"previous manual save", self.target.read_bytes())
+
+    def test_changed_files_during_backup_prevent_replacement(self):
+        real_backup = editor.backup_save
+        for changed in (self.source, self.target):
+            self.source.write_bytes(self.original)
+            self.target.write_bytes(b"previous manual save")
+            def backup(path, keep):
+                result = real_backup(path, keep)
+                if path == self.target:
+                    changed.write_bytes(b"external write")
+                return result
+            with self.subTest(path=changed), patch.object(editor, "backup_save", side_effect=backup):
+                with self.assertRaisesRegex(RuntimeError, "changed"):
+                    self.copy()
+                self.assertEqual(
+                    b"external write" if changed == self.target else b"previous manual save",
+                    self.target.read_bytes())
+                self.assertEqual([], list(self.folder.glob("*.editor.tmp")))
+
+    def test_replace_failure_preserves_manual_save_and_cleans_temp(self):
+        with patch.object(editor.os, "replace", side_effect=OSError("locked")):
+            with self.assertRaisesRegex(OSError, "locked"):
+                self.copy()
+        self.assertEqual(b"previous manual save", self.target.read_bytes())
+        self.assertEqual([], list(self.folder.glob("*.editor.tmp")))
+
+    def test_retention_applies_independently_to_both_slots(self):
+        for _ in range(3):
+            self.copy(max_backups=2)
+        self.assertEqual(2, len(editor.list_backups(self.source)))
+        self.assertEqual(2, len(editor.list_backups(self.target)))
+
+
+class AutoSaveCopyGuiTests(unittest.TestCase):
+    def setUp(self):
+        self.source = Path("123_AutoSave_0.sav")
+        self.target = Path("123_0.sav")
+        self.app = SimpleNamespace(
+            document=SimpleNamespace(path=self.source), pending={},
+            _structural_guard=Mock(return_value=True), keep_var=Mock(get=Mock(return_value=7)),
+            _refresh_saves=Mock(), _populate_backups=Mock(), status_var=Mock(),
+        )
+        self.discover = self.enterContext(patch.object(
+            editor, "manual_save_candidates", return_value=[self.target]))
+        self.copy = self.enterContext(patch.object(editor, "copy_autosave_to_manual"))
+        self.confirm = self.enterContext(patch.object(gui.messagebox, "askyesno", return_value=True))
+        self.error = self.enterContext(patch.object(gui.messagebox, "showerror"))
+        self.game = self.enterContext(patch.object(gui, "_game_is_running", return_value=False))
+        self.dialog = self.enterContext(patch.object(gui, "_ManualSaveDialog"))
+
+    def run_copy(self):
+        gui.LastCaretakerEditor._copy_autosave_to_manual(self.app)
+
+    def test_single_manual_slot_copies_off_thread_and_refreshes_without_reloading(self):
+        main = threading.get_ident()
+        threads = []
+        self.copy.side_effect = lambda *_a, **_k: threads.append(threading.get_ident())
+        self.run_copy()
+        self.dialog.assert_not_called()
+        self.copy.assert_called_once_with(self.app.document, self.target, max_backups=7)
+        self.assertNotEqual(main, threads[0])
+        self.app._refresh_saves.assert_called_once()
+        self.app._populate_backups.assert_called_once()
+        self.assertIn("AutoSave remains open", self.app.status_var.set.call_args.args[0])
+        self.assertIn(str(self.target), self.confirm.call_args.args[1])
+        self.error.assert_not_called()
+
+    def test_multiple_slots_require_selection_and_honor_cancellation(self):
+        other = Path("123_1.sav")
+        self.discover.return_value = [other, self.target]
+        self.dialog.return_value.result = self.target
+        self.run_copy()
+        self.dialog.assert_called_once_with(self.app, [other, self.target])
+        self.copy.assert_called_once_with(self.app.document, self.target, max_backups=7)
+        self.copy.reset_mock()
+        self.confirm.reset_mock()
+        self.dialog.return_value.result = None
+        self.run_copy()
+        self.copy.assert_not_called()
+        self.confirm.assert_not_called()
+
+    def test_no_manual_slot_and_declined_confirmation_do_not_write(self):
+        self.discover.return_value = []
+        self.run_copy()
+        self.error.assert_called_once()
+        self.confirm.assert_not_called()
+        self.copy.assert_not_called()
+        self.discover.return_value = [self.target]
+        self.confirm.return_value = False
+        self.run_copy()
+        self.copy.assert_not_called()
+
+    def test_non_auto_save_pending_edits_and_game_running_are_guarded(self):
+        for document in (None, SimpleNamespace(path=self.target)):
+            self.app.document = document
+            self.run_copy()
+        self.discover.assert_not_called()
+        self.app.document = SimpleNamespace(path=self.source)
+        self.app._structural_guard.return_value = False
+        self.run_copy()
+        self.discover.assert_not_called()
+        self.app._structural_guard.return_value = True
+        self.game.return_value = True
+        self.run_copy()
+        self.copy.assert_not_called()
+        self.error.assert_called_once()
+
+    def test_failed_copy_reports_error_without_success_status(self):
+        self.copy.side_effect = OSError("backup failed")
+        self.run_copy()
+        self.error.assert_called_once_with("Copy AutoSave failed", "backup failed")
+        self.app.status_var.set.assert_not_called()
+        self.app._refresh_saves.assert_not_called()
 
 
 class CompressionMethodTests(unittest.TestCase):
@@ -2837,7 +3023,7 @@ class NotWhilePumpingTests(unittest.TestCase):
         for name in (
             "_load", "_reload", "_repair_and_top_off", "_purge_empty_slots",
             "_remove_duplicate_stacks", "_mark_blueprints_scanned", "_purge", "_save",
-            "_create_backup", "_restore_backup",
+            "_create_backup", "_restore_backup", "_copy_autosave_to_manual",
         ):
             with self.subTest(command=name):
                 self.assertTrue(hasattr(getattr(gui.LastCaretakerEditor, name), "__wrapped__"))
@@ -2878,6 +3064,7 @@ class LoadWarningGuiTests(unittest.TestCase):
             _map_tab_changed=Mock(),
             _show_human_selection=Mock(),
             _populate_backups=Mock(),
+            _update_copy_autosave_button=Mock(),
         )
         return app, statuses
 
@@ -3202,6 +3389,33 @@ class ResponsiveGuiTests(unittest.TestCase):
                 texts.append(widget.cget("text"))
         self.assertIn("Save file on this PC:", texts)
         self.assertIn("Browse...", texts)
+        self.assertIn("Copy AutoSave to Manual...", texts)
+
+    def test_copy_autosave_button_tracks_loaded_save_not_selector(self) -> None:
+        app = self.app
+        self.assertTrue(app.copy_autosave_button.instate(["disabled"]))
+        for name, enabled in (("slot_aUtOsAvE_0.sav", True), ("slot_0.sav", False)):
+            app.document = SimpleNamespace(path=Path(name))
+            app.save_var.set("different_AutoSave_0.sav")
+            app._update_copy_autosave_button()
+            self.assertEqual(enabled, app.copy_autosave_button.instate(["!disabled"]))
+
+    def test_manual_save_picker_shows_slots_and_returns_selected_path(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            paths = [Path(folder) / name for name in ("123_0.sav", "123_1.sav")]
+            for path in paths:
+                path.write_bytes(b"manual")
+            with patch.object(gui.simpledialog.Dialog, "__init__", return_value=None):
+                dialog = gui._ManualSaveDialog(self.app, paths)
+            frame = gui.ttk.Frame(self.app)
+            self.addCleanup(frame.destroy)
+            field = dialog.body(frame)
+            self.assertEqual(0, field.current())
+            self.assertIn(paths[0].name, field.cget("values")[0])
+            self.assertEqual("readonly", str(field.cget("state")))
+            field.current(1)
+            dialog.apply()
+            self.assertEqual(paths[1], dialog.result)
 
     def test_options_are_in_settings_except_map_layers(self) -> None:
         app = self.app

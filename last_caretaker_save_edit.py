@@ -10,6 +10,7 @@ import re
 import shutil
 import struct
 import sys
+import tempfile
 import time
 import zlib
 from collections import Counter
@@ -1608,6 +1609,61 @@ def discover_saves(root: Path = DEFAULT_SAVE_ROOT) -> list[Path]:
     return sorted(saves, key=lambda path: path.stat().st_mtime, reverse=True)
 
 
+def manual_save_candidates(autosave: Path) -> list[Path]:
+    """Newest-first manual slots beside this AutoSave, never in another profile."""
+    if "autosave" not in autosave.name.casefold():
+        return []
+    return sorted(
+        (path for path in autosave.parent.iterdir()
+         if path.is_file() and path.suffix.casefold() == ".sav"
+         and "autosave" not in path.name.casefold() and ".bak" not in path.name.casefold()),
+        key=lambda path: path.stat().st_mtime, reverse=True,
+    )
+
+
+def copy_autosave_to_manual(
+    document: SaveDocument, destination: Path, *, max_backups: int = 20,
+) -> tuple[Path, Path]:
+    """Back up both slots, then atomically copy the exact AutoSave bytes."""
+    source = document.path
+    if max_backups < 1:
+        raise ValueError("At least one backup must be retained")
+    if (destination.resolve() not in {path.resolve() for path in manual_save_candidates(source)}
+            or source.samefile(destination)):
+        raise ValueError("Choose an existing manual save in the AutoSave's folder")
+    replacement = source.read_bytes()
+    raw, _ = decompress_container(replacement)
+    validate_raw_save(raw)
+    if raw != document.raw:
+        raise RuntimeError("AutoSave changed on disk; reload it before copying")
+    previous = destination.read_bytes()
+    source_backup = backup_save(source, max_backups)
+    if source_backup.read_bytes() != replacement:
+        raise RuntimeError("AutoSave changed while creating its backup; nothing was overwritten")
+    destination_backup = backup_save(destination, max_backups)
+    if destination_backup.read_bytes() != previous:
+        raise RuntimeError("Manual save changed while creating its backup; nothing was overwritten")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=destination.parent, prefix=destination.name + ".", suffix=".editor.tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(replacement)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if temporary.read_bytes() != replacement:
+            raise RuntimeError("Copy verification failed; nothing was overwritten")
+        if source.read_bytes() != replacement or destination.read_bytes() != previous:
+            raise RuntimeError("A save changed on disk during copying; nothing was overwritten")
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return source_backup, destination_backup
+
+
 def load_save(path: Path, progress: Callable[[str], None] | None = None) -> SaveDocument:
     """Read a save. ``progress`` receives a short stage label as work advances.
 
@@ -1712,6 +1768,8 @@ def backup_save(path: Path, max_backups: int = 20) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     backup = path.with_name(f"{path.name}.{timestamp}.bak")
     shutil.copy2(path, backup)
+    # Retention and the Backups UI need creation time, not the save's old mtime.
+    os.utime(backup, None)
     prune_backups(path, max_backups)
     return backup
 
