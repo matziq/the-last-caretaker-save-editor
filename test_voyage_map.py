@@ -425,16 +425,22 @@ class NamedLocationTests(unittest.TestCase):
                          (place.label, place.position, place.actor))
         self.assertIn("LazarusComplex", place.searchable)
         self.assertIn("In this save's map-marker list: no", place.details)
+        self.assertIs(place.in_save, False)
+        self.assertEqual("Game files only", place.source)
         self.assertEqual((), data.notices)
         self.assertEqual(2, len([p for p in data.points if p.layer != "locations"]))
         with patch.object(maps, "_saved_locators", return_value={self.ACTOR}):
             place = next(p for p in maps.read_map(raw, named_locations=path).points
                          if p.layer == "locations")
         self.assertIn("In this save's map-marker list: yes", place.details)
+        self.assertIs(place.in_save, True)
+        self.assertEqual("Save + game files", place.source)
         with patch.object(maps, "_saved_locators", return_value=None):
             place = next(p for p in maps.read_map(raw, named_locations=path).points
                          if p.layer == "locations")
         self.assertIn("unknown", " ".join(place.details))
+        self.assertIsNone(place.in_save)
+        self.assertEqual("Save status unknown", place.source)
 
     def test_missing_or_invalid_catalog_is_a_notice_not_a_map_failure(self):
         raw = save([], [actor("BP_Unknown_C1")])
@@ -540,6 +546,79 @@ class MapViewTests(unittest.TestCase):
         self.view.set_data(maps.MapData(self.points, (WORLD, "other-world"), 6, 1))
         self.root.update()
         self.root.withdraw()
+
+    def test_site_list_includes_game_only_sites_independent_of_layers_and_map_search(self):
+        view = self.view
+        sites = (
+            maps.MapPoint("l1", WORLD, "Locator1", "Game-only site", "locations",
+                          (500, -900, 2), in_save=False),
+            maps.MapPoint("l2", WORLD, "Locator2", "Saved site", "locations",
+                          (600, -800, 3), in_save=True),
+            maps.MapPoint("l3", WORLD, "Locator3", "Unknown site", "locations",
+                          (700, -700, 4), in_save=None),
+            maps.MapPoint("boat", WORLD, "BP_Boat_Barge_C1031", "Boat Barge", "boats",
+                          (1000, -2000, 3)),
+        )
+        view.set_data(maps.MapData(self.points + sites, (WORLD, "other-world")))
+        view.layer_vars["locations"].set(False)
+        view.query.set("nothing matches")
+        view.apply_filter()
+        self.assertEqual(3, len(view.location_rows))
+        self.assertEqual(
+            ["Game files only", "Save + game files", "Save status unknown"],
+            [view.location_tree.set(iid, "source") for iid in view.location_tree.get_children()],
+        )
+        view.list_query.set("Game-only")
+        view._populate_location_list()
+        self.assertEqual(["l1"], [p.key for p in view.location_rows.values()])
+        view.location_tree.selection_set("0")
+        view._show_list_point()
+        self.assertEqual("l1", view.selected.key)
+        self.assertTrue(view.layer_vars["locations"].get())
+        self.assertEqual("", view.query.get())
+        self.assertEqual((500, -900), (view.camera.x, view.camera.y))
+        self.assertIn("Source: Game files only", view.details.get("1.0", tk.END))
+        view.list_scope.set("Boats")
+        view.list_query.set("")
+        view._populate_location_list()
+        self.assertEqual(["boat"], [p.key for p in view.location_rows.values()])
+        self.assertEqual("Save", view.location_tree.set("0", "source"))
+        view.location_tree.selection_set("0")
+        view._show_list_point()
+        view.draw()
+        self.assertTrue(any(p.key == "boat" for group in view.groups.values() for p in group))
+        view.world_var.set("other-world")
+        view.apply_filter()
+        self.assertEqual({}, view.location_rows)
+        view.reset()
+        self.assertEqual((), view.location_tree.get_children())
+
+    def test_boat_layer_only_classifies_root_boats_not_their_equipment(self):
+        raw = save([], [
+            actor("BP_Boat_Barge_C1031"),
+            actor("BP_Boat_Barge_C1031LevelInstanceBP_Module_Engine_C123"),
+            actor("BP_BoatExtension_HeliPad_C-123"),
+        ])
+        data = maps.read_map(raw)
+        boats = [p for p in data.points if p.layer == "boats"]
+        self.assertEqual(["BP_Boat_Barge_C1031"], [p.actor for p in boats])
+        self.assertEqual("Save", boats[0].source)
+
+    def test_list_remains_usable_in_short_map_panel(self):
+        self.root.deiconify()
+        self.root.geometry("1040x410")
+        self.view.inspector.select(self.view.list_tab)
+        self.root.update()
+        self.assertGreaterEqual(self.view.location_tree.winfo_height(), 85)
+        pending = list(self.view.list_tab.winfo_children())
+        while pending:
+            widget = pending.pop()
+            pending.extend(widget.winfo_children())
+            if isinstance(widget, (gui.ttk.Button, gui.ttk.Entry, gui.ttk.Combobox)):
+                self.assertLessEqual(
+                    widget.winfo_rooty() + widget.winfo_height(),
+                    self.view.list_tab.winfo_rooty() + self.view.list_tab.winfo_height(),
+                )
 
     def test_default_layers_toggle_search_clear_and_world_switch(self):
         view = self.view
@@ -1035,6 +1114,34 @@ class MapEditorIntegrationTests(unittest.TestCase):
                 last_layer.winfo_rooty() + last_layer.winfo_height(),
                 app.map_view.layer_canvas.winfo_rooty() + app.map_view.layer_canvas.winfo_height(),
             )
+
+
+class SiteListEditorLayoutTests(unittest.TestCase):
+    def test_site_list_fits_actual_editor_at_minimum_and_default_sizes(self):
+        with patch.object(gui, "_load_settings", return_value={}), \
+                patch.object(gui.LastCaretakerEditor, "_refresh_saves"), \
+                patch.object(gui.LastCaretakerEditor, "_load_startup_save"), \
+                patch.object(gui.LastCaretakerEditor, "_open_full_screen"):
+            app = gui.LastCaretakerEditor()
+        try:
+            app.notebook.select(app.map_tab)
+            app.update()
+            point = maps.MapPoint("site", WORLD, "Locator", "Named site",
+                                  "locations", (100, 200, 3), in_save=False)
+            app.map_view.set_data(maps.MapData((point,), (WORLD,)))
+            view = app.map_view
+            view.inspector.select(view.list_tab)
+            for size in ("1040x680", "1360x820"):
+                with self.subTest(size=size):
+                    app.geometry(size)
+                    app.update()
+                    self.assertGreaterEqual(view.location_tree.winfo_height(), 85)
+                    self.assertLessEqual(
+                        view.location_tree.winfo_rooty() + view.location_tree.winfo_height(),
+                        view.list_tab.winfo_rooty() + view.list_tab.winfo_height(),
+                    )
+        finally:
+            app.destroy()
 
 
 if __name__ == "__main__":

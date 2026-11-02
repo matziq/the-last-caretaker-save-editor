@@ -38,6 +38,9 @@ class SaveMapView(ttk.Frame):
         self.status = tk.StringVar(value="Load a save, then open Map to read saved positions.")
         self.layer_vars: dict[str, tk.BooleanVar] = {}
         self.layer_checks: dict[str, ttk.Checkbutton] = {}
+        self.location_rows: dict[str, MapPoint] = {}
+        self.list_query = tk.StringVar()
+        self.list_scope = tk.StringVar(value="Named sites")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
         filters = ttk.Frame(self)
@@ -96,8 +99,45 @@ class SaveMapView(ttk.Frame):
         self.inspector.grid(row=0, column=0, sticky="nsew")
         self.layers_tab = ttk.Frame(self.inspector, padding=4)
         self.details_tab = ttk.Frame(self.inspector, padding=4)
+        self.list_tab = ttk.Frame(self.inspector, padding=4)
         self.inspector.add(self.layers_tab, text="Layers")
+        self.inspector.add(self.list_tab, text="Sites / boats")
         self.inspector.add(self.details_tab, text="Object details")
+        self.list_tab.columnconfigure(0, weight=1)
+        self.list_tab.rowconfigure(2, weight=1, minsize=94)
+        scope_row = ttk.Frame(self.list_tab)
+        scope_row.grid(row=0, column=0, sticky="ew")
+        scope_row.columnconfigure(0, weight=1)
+        scope = ttk.Combobox(scope_row, textvariable=self.list_scope, state="readonly",
+                             values=("Named sites", "Boats", "All mapped objects"), width=14)
+        scope.grid(row=0, column=0, sticky="ew")
+        ttk.Button(scope_row, text="Show on map", command=self._show_list_point).grid(
+            row=0, column=1, padx=(4, 0))
+        scope.bind("<<ComboboxSelected>>", lambda _e: self._populate_location_list())
+        search_row = ttk.Frame(self.list_tab)
+        search_row.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        search_row.columnconfigure(0, weight=1)
+        list_search = ttk.Entry(search_row, textvariable=self.list_query, width=12)
+        list_search.grid(row=0, column=0, sticky="ew")
+        list_search.bind("<Return>", lambda _e: self._populate_location_list())
+        ttk.Button(search_row, text="Find in list",
+                   command=self._populate_location_list).grid(row=0, column=1, padx=(4, 0))
+        table = ttk.Frame(self.list_tab)
+        table.grid(row=2, column=0, sticky="nsew", pady=(4, 0))
+        table.columnconfigure(0, weight=1)
+        table.rowconfigure(0, weight=1)
+        self.location_tree = ttk.Treeview(table, columns=("name", "source"), show="headings",
+                                          selectmode="browse", height=5)
+        self.location_tree.heading("name", text="Name")
+        self.location_tree.heading("source", text="Source")
+        self.location_tree.column("name", width=150, minwidth=80)
+        self.location_tree.column("source", width=130, minwidth=85)
+        self.location_tree.grid(row=0, column=0, sticky="nsew")
+        list_scroll = ttk.Scrollbar(table, command=self.location_tree.yview)
+        list_scroll.grid(row=0, column=1, sticky="ns")
+        self.location_tree.configure(yscrollcommand=list_scroll.set)
+        self.location_tree.bind("<Double-Button-1>", lambda _e: self._show_list_point())
+        self.location_tree.bind("<Return>", lambda _e: self._show_list_point())
         self.layers_tab.rowconfigure(0, weight=1)
         self.layers_tab.columnconfigure(0, weight=1)
         self.layer_canvas = tk.Canvas(self.layers_tab, width=300, height=1, highlightthickness=0)
@@ -182,6 +222,7 @@ class SaveMapView(ttk.Frame):
         self._cancel_warp()
         self.warp_button.configure(state=tk.DISABLED)
         self.data = None
+        self._populate_location_list()
         self.visible = []
         self.groups.clear()
         self._select_group([])
@@ -206,6 +247,7 @@ class SaveMapView(ttk.Frame):
             return
         self._cancel_warp()
         world = self.world_var.get()
+        self._populate_location_list()
         self.warp_button.configure(
             state=tk.NORMAL if self.warp_player_callback and self.data.player(world) else tk.DISABLED,
         )
@@ -230,6 +272,40 @@ class SaveMapView(ttk.Frame):
             self.fit_visible()
         else:
             self.schedule_draw()
+
+    def _populate_location_list(self) -> None:
+        self.location_tree.delete(*self.location_tree.get_children())
+        self.location_rows.clear()
+        self.location_tree.heading("name", text="Name")
+        if self.data is None:
+            return
+        scope = self.list_scope.get()
+        points = [
+            point for point in self.data.points
+            if point.world == self.world_var.get()
+            and (scope == "All mapped objects"
+                 or point.layer == ("boats" if scope == "Boats" else "locations"))
+            and self.matches_filter(self.list_query.get().strip(), point.searchable)
+        ]
+        for index, point in enumerate(sorted(points, key=lambda p: (p.label.casefold(), p.actor))):
+            iid = str(index)
+            self.location_rows[iid] = point
+            self.location_tree.insert("", tk.END, iid=iid, values=(point.label, point.source))
+        self.location_tree.heading("name", text=f"Name ({len(points):,})")
+
+    def _show_list_point(self) -> None:
+        selected = self.location_tree.selection()
+        point = self.location_rows.get(selected[0]) if selected else None
+        if point is None or self.data is None:
+            return
+        self.query.set("")
+        self.layer_vars[point.layer].set(True)
+        self.apply_filter()
+        self.camera.x, self.camera.y = point.position[:2]
+        self.camera.scale = max(self.camera.scale, 1.0)
+        self._select_group([point])
+        if self.on_layers_changed is not None:
+            self.on_layers_changed()
 
     def fit_visible(self) -> None:
         self.camera.fit(self._core_positions([point.position for point in self.visible]),
@@ -313,7 +389,7 @@ class SaveMapView(ttk.Frame):
                 buckets[math.floor(x / 18), math.floor(y / 18)].append(point)
         colors = {key: color for key, _label, color, _enabled in LAYERS}
         priority = {key: index for index, key in enumerate(
-            ("humans", "player", "locations", "pods", "rockets", "checkpoints", "containers", "other"))}
+            ("humans", "player", "locations", "boats", "pods", "rockets", "checkpoints", "containers", "other"))}
         labels: list[tuple[float, float, str, str]] = []
         place_labels: list[tuple[float, float, str, str]] = []
         obstacles: list[tuple[float, float, float, float]] = []
@@ -482,6 +558,7 @@ class SaveMapView(ttk.Frame):
         if point.profession:
             lines.append(f"Saved profession: {point.profession}")
         lines.extend(point.details)
+        lines.append(f"Source: {point.source}")
         lines.append(
             "Move status: " + (point.move_block_reason or
                                "Eligible: loose human pod/seed; a backup is created before saving.")

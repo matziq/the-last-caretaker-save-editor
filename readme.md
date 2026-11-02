@@ -407,7 +407,7 @@ does not add a map-parsing step to save loading. It plots actual saved actor
 positions, **not terrain, coastlines, routes, or every object in the game**.
 No game installation or network connection is required.
 
-**Player**, **Humans in pods**, and **Named locations** are enabled initially.
+**Player**, **Humans in pods**, **Named locations**, and **Boats** are enabled initially.
 Layer checkboxes in **Map > Layers** also
 show other human pods, functional rockets, checkpoints, containers/crates, and
 other saved actors. The layer list scrolls and remembers enabled layers between launches.
@@ -416,6 +416,23 @@ that layer does not assert that every pod is completely empty. Counts beside
 the layers describe the selected world's available objects.
 
 ### Named locations
+
+**Map > Sites / boats** lists every named site in the selected world, even
+when its map layer is off or the map's Find filter hides it. Choose **Boats**
+to locate saved boat roots, or **All mapped objects** to browse the other markers.
+Type a list search and press Enter or **Find in list**. Select a row and use
+**Show on map** (or double-click/press Enter) to center it and open
+its coordinates, distance and identity. This enables its layer and clears the
+map's Find filter; it never moves the player, boat, or any saved object.
+Boat equipment is not misidentified as a separate boat. Player warp leaves boats
+behind, so use the Boats list to find your previous vessel after warping.
+
+The list's **Source** column distinguishes **Save** (saved actors),
+**Save + game files** (a named site's identity appears in the saved marker list),
+**Game files only** (no marker reference in this save), and **Save status unknown**
+(the saved marker list could not be decoded). Named-site coordinates always come
+from game files. A saved marker reference is **not** proof the site was visited
+or completed.
 
 **Named locations** shows places such as Lazarus Complex, Platform Omega,
 Exodus Station, refuel outposts, seed reserves, and Gyrocopyter platforms as

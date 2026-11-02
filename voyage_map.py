@@ -19,6 +19,7 @@ LAYERS = (
     ("player", "Player", "#205da8", True),
     ("humans", "Humans in pods", "#a94e09", True),
     ("locations", "Named locations", "#a3324a", True),
+    ("boats", "Boats", "#176d7a", True),
     ("pods", "Other human pods", "#197265", False),
     ("rockets", "Functional rockets", "#75449b", False),
     ("checkpoints", "Checkpoints", "#52701e", False),
@@ -42,11 +43,20 @@ class MapPoint:
     details: tuple[str, ...] = ()
     actor_offset: int | None = None
     move_block_reason: str = "Only loose human seed items and human pods can be moved."
+    in_save: bool | None = True
+
+    @property
+    def source(self) -> str:
+        if self.layer != "locations":
+            return "Save"
+        if self.in_save is None:
+            return "Save status unknown"
+        return "Save + game files" if self.in_save else "Game files only"
 
     @property
     def searchable(self) -> str:
         return " ".join((self.label, self.actor, self.world, self.social_id, self.profession,
-                         *self.details))
+                         self.source, *self.details))
 
 
 @dataclass(frozen=True)
@@ -348,6 +358,7 @@ def read_map(
                     "Position source: game world data (not stored in the save)",
                     f"In this save's map-marker list: {listed}",
                     f"Game identifier: {location.ident}" if location.ident else ""))),
+                in_save=None if saved is None else location.actor in saved,
             ))
         persistent = humans._field(world_entry.props, "PersistentActors", required=False)
         if persistent is None:
@@ -371,6 +382,8 @@ def read_map(
                 layer, label, social_id, profession = "other", _actor_label(name), "", ""
                 if name.startswith("BP_FirstPersonCharacter"):
                     layer, label = "player", "Saved player position"
+                elif "LevelInstance" not in name and re.fullmatch(r"BP_Boat_\w+_C-?\d+", name):
+                    layer, label = "boats", _actor_label(name)
                 elif name.startswith("BP_Module_Human_Pod_"):
                     try:
                         blob = humans._field(actor.props, "ByteData")
