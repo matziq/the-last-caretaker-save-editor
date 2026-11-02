@@ -501,8 +501,14 @@ or in midair. Use a known safe height and restore the backup if necessary.
 Only the player moves; ships and other actors do not.
 
 Warping stays within the selected world and requires exactly one saved player,
-the supported `pawns` layout, an unattached player, and empty saved component/bone
-transform maps. Seated/attached players and unsupported layouts are refused;
+an unattached player, and empty saved component/bone transform maps. In a
+manual save the player is already in `PersistentActors["pawns"]`. An AutoSave
+files the player under a world-partition cell such as `73:88`; the warp moves
+that player record, unchanged except for its position, into the save's existing
+empty-or-compatible `pawns` cell (the manual-save layout) so the player does not
+stay filed under the old area. If the AutoSave has no compatible `pawns` cell,
+the warp is refused; make a manual save in the game and warp that save instead.
+Seated/attached players and unsupported layouts are refused;
 leave the vehicle/seat, save in the game, and reload before trying again.
 The warp updates both the pawn transform and `PlayerData.LastLocation`, preserving
 rotation, inventory, progression, other actors, and other worlds. Pending edits,
@@ -672,8 +678,8 @@ copies. Mirrored twins are hidden from the results summary, so a report of
 
 The game writes two differently organized files. A manual slot
 (`<SteamId>_0.sav`) files the player's actor under
-`PersistentActors["pawns"]`. The game's own `<SteamId>_AutoSave_0.sav` has no
-`pawns` entry at all: it files the player under the world-partition cell the
+`PersistentActors["pawns"]`. The game's own `<SteamId>_AutoSave_0.sav` leaves
+`pawns` empty or omits it: it files the player under the world-partition cell the
 player is standing in (a key such as `119:43`), and its newest write is usually
 the newest file in the save folder, so it is what the editor opens at launch.
 

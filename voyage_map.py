@@ -244,35 +244,68 @@ def relocate_actor(
     return bytes(updated)
 
 
-def player_warp_offsets(raw: bytes, point: MapPoint) -> tuple[int, int]:
-    """Validate the unattached pawn and its cached location before changing either."""
-    if len(raw) < 4 or struct.unpack_from("<I", raw)[0] != len(raw) - 4:
-        raise gvas.GvasError("Invalid save length envelope")
-    if point.layer != "player" or not point.actor.startswith("BP_FirstPersonCharacter"):
-        raise ValueError("Select a world with a saved player, not an object or named location.")
+PLAYER_CELL = "pawns"
+
+
+@dataclass(frozen=True)
+class _PlayerSite:
+    transform: int
+    location: int
+    record: gvas.MapEntry
+    actors: gvas.PropertyTag
+    pawns: gvas.PropertyTag | None
+    cell: str
+    cell_counts: tuple[tuple[str, int], ...]
+
+
+def _actor_name(raw: bytes, actor: gvas.MapEntry) -> str:
+    name = humans._field(actor.props, "ActorName", required=False)
+    return "" if name is None else humans._string(raw, name)
+
+
+def _player_site(raw: bytes, world_key: str) -> tuple[gvas.MapEntry, _PlayerSite]:
+    """Locate the world's only pawn plus the ``pawns`` cell it must live in."""
     root, _ = gvas.read_property_list(raw, gvas.find_root(raw))
     worlds, _ = humans._struct_records(raw, humans._field(root, "GameProgress"))
-    matches = [world for world in worlds if world.key == point.world]
+    matches = [world for world in worlds if world.key == world_key]
     if len(matches) != 1:
         raise ValueError("The player's world is no longer available; refresh the map.")
     world = matches[0]
     persistent = humans._field(world.props, "PersistentActors")
     players = []
+    pawn_cells = []
+    counts = []
     for cell in humans._struct_records(raw, persistent)[0]:
         actors = humans._field(cell.props, "actors", required=False)
         if actors is None:
             continue
-        for actor in humans._struct_records(raw, actors)[0]:
-            name = humans._field(actor.props, "ActorName", required=False)
-            if name is not None and humans._string(raw, name).startswith("BP_FirstPersonCharacter"):
-                players.append((cell, actor, humans._string(raw, name)))
+        records = humans._struct_records(raw, actors)[0]
+        counts.append((str(cell.key), len(records)))
+        if cell.key == PLAYER_CELL:
+            pawn_cells.append((actors, records))
+        for actor in records:
+            if _actor_name(raw, actor).startswith("BP_FirstPersonCharacter"):
+                players.append((cell, actors, actor))
     if len(players) != 1:
         raise ValueError("A unique saved player is required in this world.")
-    cell, actor, name = players[0]
-    if actor.value_start != point.actor_offset or name != point.actor:
-        raise ValueError("The player no longer matches this map marker; refresh the map.")
-    if cell.key != "pawns":
-        raise ValueError("Player warping currently requires the supported 'pawns' save layout.")
+    cell, actors, actor = players[0]
+    pawns = None
+    if cell.key != PLAYER_CELL:
+        # AutoSaves file the pawn under its 100 m world-partition cell. Manual
+        # saves (which the game loads) keep it in an otherwise empty ``pawns``
+        # cell, so a warped pawn is moved there instead of into a cell that
+        # no longer matches its position.
+        if len(pawn_cells) != 1:
+            raise ValueError(
+                f"This save stores the player under world cell '{cell.key}' and has no "
+                f"usable '{PLAYER_CELL}' cell. Make a manual save in the game, then warp that save."
+            )
+        pawns, pawn_records = pawn_cells[0]
+        if pawns.type != actors.type or any(record.key == actor.key for record in pawn_records):
+            raise ValueError(
+                f"The save's '{PLAYER_CELL}' cell is not compatible with the player record. "
+                "Make a manual save in the game, then warp that save."
+            )
     for field in ("AttachParent", "AttachTransform"):
         tag = humans._field(actor.props, field)
         if (tag.type_name != "OptionalProperty" or tag.size != 4
@@ -283,10 +316,6 @@ def player_warp_offsets(raw: bytes, point: MapPoint) -> tuple[int, int]:
         if tag.type_name != "MapProperty" or humans._map_entries(raw, tag):
             raise ValueError("The player has an unsupported component transform layout.")
     transform = _packed_transform(actor.props, "Transform")
-    position = struct.unpack_from("<3d", raw, transform.payload)
-    if (not all(math.isfinite(value) for value in position)
-            or tuple(value / 100 for value in position) != point.position):
-        raise ValueError("The player's saved position changed; refresh the map.")
     player_data = humans._field(world.props, "PlayerData")
     if player_data.type_name != "StructProperty":
         raise ValueError("PlayerData is not a supported saved structure.")
@@ -297,20 +326,72 @@ def player_warp_offsets(raw: bytes, point: MapPoint) -> tuple[int, int]:
     if (location.type_name != "StructProperty" or location.type.first is None
             or location.type.first.name != "Vector" or location.size != 24):
         raise ValueError("The cached player location is not a supported saved vector.")
-    return transform.payload, location.payload
+    return actor, _PlayerSite(transform.payload, location.payload, actor, actors, pawns,
+                              str(cell.key), tuple(counts))
+
+
+def _validated_player_site(raw: bytes, point: MapPoint) -> _PlayerSite:
+    if len(raw) < 4 or struct.unpack_from("<I", raw)[0] != len(raw) - 4:
+        raise gvas.GvasError("Invalid save length envelope")
+    if point.layer != "player" or not point.actor.startswith("BP_FirstPersonCharacter"):
+        raise ValueError("Select a world with a saved player, not an object or named location.")
+    actor, site = _player_site(raw, point.world)
+    if actor.value_start != point.actor_offset or _actor_name(raw, actor) != point.actor:
+        raise ValueError("The player no longer matches this map marker; refresh the map.")
+    position = struct.unpack_from("<3d", raw, site.transform)
+    if (not all(math.isfinite(value) for value in position)
+            or tuple(value / 100 for value in position) != point.position):
+        raise ValueError("The player's saved position changed; refresh the map.")
+    return site
+
+
+def player_warp_offsets(raw: bytes, point: MapPoint) -> tuple[int, int]:
+    """Validate the unattached pawn and its cached location before changing either."""
+    site = _validated_player_site(raw, point)
+    return site.transform, site.location
 
 
 def warp_player(raw: bytes, point: MapPoint, destination: humans.Position3D) -> bytes:
-    """Patch the pawn position and PlayerData.LastLocation, in meters, in the same world."""
+    """Patch the pawn position and PlayerData.LastLocation, in meters, in the same world.
+
+    A pawn filed under a world-partition cell (AutoSave layout) is also moved,
+    unchanged, into the save's ``pawns`` cell, matching the manual-save layout.
+    """
     if (len(destination) != 3
             or not all(isinstance(value, (int, float)) and math.isfinite(value)
                        and math.isfinite(value * 100) for value in destination)):
         raise ValueError("Destination must contain three finite coordinates in meters.")
-    offsets = player_warp_offsets(raw, point)
-    updated = bytearray(raw)
-    for offset in offsets:
-        struct.pack_into("<3d", updated, offset, *(value * 100 for value in destination))
-    return bytes(updated)
+    site = _validated_player_site(raw, point)
+    target = struct.pack("<3d", *(value * 100 for value in destination))
+    buf = bytearray(raw)
+    for offset in (site.transform, site.location):
+        buf[offset:offset + 24] = target
+    if site.pawns is None:
+        return bytes(buf)
+    start, stop, insert = site.record.start, site.record.end, site.pawns.end
+    record = bytes(buf[start:stop])
+    for tag, sign in ((site.actors, -1), (site.pawns, 1)):
+        struct.pack_into("<i", buf, tag.size_offset, tag.size + sign * len(record))
+        count = struct.unpack_from("<i", buf, tag.payload + 4)[0] + sign
+        if count < 0:
+            raise gvas.GvasError("Invalid actor count while moving the player")
+        struct.pack_into("<i", buf, tag.payload + 4, count)
+    if insert >= stop:
+        result = bytes(buf[:start] + buf[stop:insert] + record + buf[insert:])
+    elif insert <= start:
+        result = bytes(buf[:insert] + record + buf[insert:start] + buf[stop:])
+    else:
+        raise gvas.GvasError("The player record overlaps the pawns cell")
+    actor, moved = _player_site(result, point.world)
+    expected = dict(site.cell_counts)
+    expected[site.cell] -= 1
+    expected[PLAYER_CELL] += 1
+    if (len(result) != len(raw) or moved.pawns is not None or dict(moved.cell_counts) != expected
+            or result[moved.record.start:moved.record.end] != record
+            or result[moved.transform:moved.transform + 24] != target
+            or result[moved.location:moved.location + 24] != target):
+        raise gvas.GvasError("Player warp verification failed; the save was not changed.")
+    return result
 
 
 def read_map(

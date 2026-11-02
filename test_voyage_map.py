@@ -100,7 +100,7 @@ def editor_fstring(value):
 
 def warp_world(*, position=(100.25, -200.5, 345.75), cell="pawns",
                attachment=b"\0" * 4, extra_player=False, cached=True,
-               component=False, transform_type="VoyagePackedTransform"):
+               component=False, transform_type="VoyagePackedTransform", pawns_cell=None):
     player = (
         string("ActorName", "BP_FirstPersonCharacter_New_C1", "NameProperty")
         + tag("AttachParent", "OptionalProperty", attachment, gui.save_io._pack_type("ObjectProperty"))
@@ -116,12 +116,21 @@ def warp_world(*, position=(100.25, -200.5, 345.75), cell="pawns",
     actors = [struct.pack("<Q", 1) + player]
     if extra_player:
         actors.append(struct.pack("<Q", 2) + player_actor((0, 0, 0)))
-    persistent = struct_map("PersistentActors", [
+    cells = [
         editor_fstring(cell) + struct_map("actors", actors, "UInt64Property") + END,
         editor_fstring("other-cell") + struct_map("actors", [
             struct.pack("<Q", 3) + actor("BP_Module_Building_C1"),
         ], "UInt64Property") + END,
-    ], "NameProperty")
+    ]
+    if pawns_cell is not None:
+        pawn_actors, key_type = [], "UInt64Property"
+        if pawns_cell == "duplicate":
+            pawn_actors = [struct.pack("<Q", 1) + actor("BP_Module_Building_C9")]
+        elif pawns_cell == "incompatible":
+            key_type = "UInt32Property"
+        empty = editor_fstring("pawns") + struct_map("actors", pawn_actors, key_type) + END
+        cells.insert(0 if pawns_cell == "before" else len(cells), empty)
+    persistent = struct_map("PersistentActors", cells, "NameProperty")
     location = tag(
         "LastLocation", "StructProperty", struct.pack("<3d", 101, -202, 350),
         gui.save_io._pack_type("Vector", gui.save_io._pack_type("/Script/CoreUObject")),
@@ -165,6 +174,39 @@ class PlayerWarpTests(unittest.TestCase):
         self.assertEqual(maps.read_map(raw).player("other-world"),
                          maps.read_map(moved).player("other-world"))
         self.assertEqual(moved, maps.warp_player(moved, self.player(moved), destination))
+
+    def test_autosave_cell_player_moves_into_pawns_cell_with_position(self):
+        for order in ("before", "after"):
+            with self.subTest(pawns_cell=order):
+                raw = warp_save(cell="73:88", pawns_cell=order)
+                player = self.player(raw)
+                destination = (6918.25, -13828.75, 4.5)
+                moved = maps.warp_player(raw, player, destination)
+                self.assertEqual(len(raw), len(moved))
+                self.assertEqual(destination, self.player(moved).position)
+                root, _ = gvas.read_property_list(moved, gvas.find_root(moved))
+                worlds, _ = humans._struct_records(moved, humans._field(root, "GameProgress"))
+                world_entry = next(w for w in worlds if w.key == WORLD)
+                cells = {
+                    cell.key: [maps._actor_name(moved, a) for a in humans._struct_records(
+                        moved, humans._field(cell.props, "actors"))[0]]
+                    for cell in humans._struct_records(
+                        moved, humans._field(world_entry.props, "PersistentActors"))[0]
+                }
+                self.assertEqual(["BP_FirstPersonCharacter_New_C1"], cells["pawns"])
+                self.assertEqual([], cells["73:88"])
+                self.assertEqual(["BP_Module_Building_C1"], cells["other-cell"])
+                self.assertIn(b"Do not change equipment or rotation", moved)
+                self.assertEqual(maps.read_map(raw).player("other-world").position,
+                                 maps.read_map(moved).player("other-world").position)
+                self.assertEqual(moved, maps.warp_player(moved, self.player(moved), destination))
+
+    def test_autosave_cell_player_without_compatible_pawns_cell_is_rejected(self):
+        for order in ("incompatible", "duplicate"):
+            with self.subTest(pawns_cell=order):
+                raw = warp_save(cell="73:88", pawns_cell=order)
+                with self.assertRaisesRegex((ValueError, gvas.GvasError), "pawns"):
+                    maps.warp_player(raw, self.player(raw), (1.0, 2.0, 3.0))
 
     def test_unsafe_or_unsupported_player_layout_is_rejected(self):
         for kwargs, error in (
