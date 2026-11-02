@@ -874,6 +874,137 @@ class MapViewTests(unittest.TestCase):
         view.apply_filter()
         self.assertEqual(["other-cave"], [point.key for point in view.visible])
 
+    def test_not_visited_legend_shows_only_game_files_only_and_enables_locations(self):
+        view = self.view
+        extra = (
+            maps.MapPoint("unknown", WORLD, "CaveUnknown", "Unknown cave", "locations",
+                          (700, 100, 1), location_type="caves", in_save=None),
+            maps.MapPoint("unvisited-tower", WORLD, "TowerMissing", "Missing tower", "locations",
+                          (800, 100, 2), location_type="towers", in_save=False),
+        )
+        view.set_data(maps.MapData(self._legend_filter_points() + extra, (WORLD, "other-world")))
+        view.layer_vars["locations"].set(False)
+        view.layer_vars["containers"].set(True)
+        view.apply_filter()
+        original_layers = {key: var.get() for key, var in view.layer_vars.items()}
+        changed = view.on_layers_changed = Mock()
+
+        self.assertFalse(view.not_visited_var.get())
+        self.assertEqual("Not visited (game files only)", view.not_visited_check.cget("text"))
+        view.not_visited_check.invoke()
+        self.assertEqual({"cave1", "unvisited-tower"}, {point.key for point in view.visible})
+        self.assertEqual({"Game files only"}, {point.source for point in view.visible})
+        self.assertTrue(view.layer_vars["locations"].get())
+        self.assertIn("Not visited (game files only)", view.status.get())
+        self.assertEqual(tk.DISABLED, str(view.show_all_types_button["state"]))
+        for key, was_enabled in original_layers.items():
+            if key != "locations":
+                self.assertEqual(was_enabled, view.layer_vars[key].get(), key)
+        changed.assert_called_once_with()
+
+        view.not_visited_check.invoke()
+        self.assertFalse(view.not_visited_var.get())
+        self.assertTrue({"p", "cave1", "cave2", "unknown", "boat"} <=
+                        {point.key for point in view.visible})
+        self.assertNotIn("Not visited (game files only)", view.status.get())
+        changed.assert_called_once_with()
+
+    def test_not_visited_intersects_types_and_respects_search_and_world(self):
+        view = self.view
+        extra = (
+            maps.MapPoint("unvisited-tower", WORLD, "TowerMissing", "Missing tower", "locations",
+                          (800, 100, 2), location_type="towers", in_save=False),
+            maps.MapPoint("other-unvisited", "other-world", "CaveMissing", "Other cave",
+                          "locations", (900, 100, 3), location_type="caves", in_save=False),
+        )
+        view.set_data(maps.MapData(self._legend_filter_points() + extra, (WORLD, "other-world")))
+        view.location_legend["caves"].invoke()
+        view.not_visited_check.invoke()
+        self.assertEqual({"cave1"}, {point.key for point in view.visible})
+        view.location_legend["towers"].invoke()
+        self.assertEqual({"cave1", "unvisited-tower"}, {point.key for point in view.visible})
+        view.show_all_types_button.invoke()
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertTrue(view.not_visited_var.get())
+        self.assertEqual({"cave1", "unvisited-tower"}, {point.key for point in view.visible})
+
+        view.query.set("First Whisper")
+        view.apply_filter()
+        self.assertEqual(["cave1"], [point.key for point in view.visible])
+        view.world_var.set("other-world")
+        view.apply_filter()
+        self.assertEqual([], view.visible)
+        self.assertIn("0 matching objects", view.status.get())
+        view.query.set("")
+        view.apply_filter()
+        self.assertEqual(["other-unvisited"], [point.key for point in view.visible])
+
+    def test_clear_reset_and_disabling_locations_clear_not_visited_filter(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        view.not_visited_check.invoke()
+        view.location_legend["caves"].invoke()
+        view.query.set("First")
+        view.clear_filter()
+        self.assertFalse(view.not_visited_var.get())
+        self.assertEqual(set(), view._selected_location_types())
+        self.assertEqual("", view.query.get())
+        self.assertIn("p", {point.key for point in view.visible})
+
+        view.not_visited_check.invoke()
+        view.layer_checks["locations"].invoke()
+        self.assertFalse(view.layer_vars["locations"].get())
+        self.assertFalse(view.not_visited_var.get())
+        self.assertIn("p", {point.key for point in view.visible})
+
+        view.not_visited_check.invoke()
+        self.assertTrue(view.layer_vars["locations"].get())
+        view.reset()
+        self.assertFalse(view.not_visited_var.get())
+
+    def test_list_selection_clears_only_conflicting_location_filters(self):
+        view = self.view
+        extra = (
+            maps.MapPoint("unknown", WORLD, "CaveUnknown", "Unknown cave", "locations",
+                          (700, 100, 1), location_type="caves", in_save=None),
+            maps.MapPoint("unvisited-tower", WORLD, "TowerMissing", "Missing tower", "locations",
+                          (800, 100, 2), location_type="towers", in_save=False),
+        )
+        view.set_data(maps.MapData(self._legend_filter_points() + extra, (WORLD, "other-world")))
+        view.location_legend["caves"].invoke()
+        view.not_visited_check.invoke()
+        self.assertEqual({"cave1", "cave2", "gyro", "tower", "unknown", "unvisited-tower"},
+                         {point.key for point in view.location_rows.values()})
+
+        def select(key):
+            row = next(iid for iid, point in view.location_rows.items() if point.key == key)
+            view.location_tree.selection_set(row)
+            view._show_list_point()
+            self.assertEqual(key, view.selected.key)
+            self.assertIn(key, {point.key for point in view.visible})
+
+        select("cave1")
+        self.assertTrue(view.not_visited_var.get())
+        self.assertEqual({"caves"}, view._selected_location_types())
+        select("cave2")
+        self.assertFalse(view.not_visited_var.get())
+        self.assertEqual({"caves"}, view._selected_location_types())
+        view.not_visited_check.invoke()
+        select("unknown")
+        self.assertFalse(view.not_visited_var.get())
+        self.assertEqual({"caves"}, view._selected_location_types())
+        view.not_visited_check.invoke()
+        select("unvisited-tower")
+        self.assertTrue(view.not_visited_var.get())
+        self.assertEqual(set(), view._selected_location_types())
+
+        view.location_legend["towers"].invoke()
+        view.list_scope.set("Boats")
+        view._populate_location_list()
+        select("boat")
+        self.assertFalse(view.not_visited_var.get())
+        self.assertEqual(set(), view._selected_location_types())
+
     def test_site_list_stays_independent_and_selecting_a_hidden_type_clears_filter(self):
         view = self.view
         view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
@@ -927,6 +1058,33 @@ class MapViewTests(unittest.TestCase):
         cave.event_generate("<KeyPress-space>")
         self.root.update()
         self.assertEqual({"caves"}, view._selected_location_types())
+
+    def test_not_visited_control_is_focusable_clickable_and_keyboard_activatable(self):
+        view = self.view
+        view.set_data(maps.MapData(self._legend_filter_points(), (WORLD, "other-world")))
+        self.root.deiconify()
+        view.inspector.select(view.layers_tab)
+        self.root.update()
+        control = view.not_visited_check
+        canvas_height = view.layer_canvas.bbox("all")[3]
+        view.layer_canvas.yview_moveto(control.winfo_y() / canvas_height)
+        self.root.update()
+        self.assertEqual("hand2", str(control.cget("cursor")))
+        self.assertTrue(int(control.cget("takefocus")))
+        self.assertTrue(control.bind("<Return>"))
+        control.event_generate("<Enter>", x=10, y=10)
+        control.event_generate("<ButtonPress-1>", x=10, y=10)
+        control.event_generate("<ButtonRelease-1>", x=10, y=10)
+        self.root.update()
+        self.assertTrue(view.not_visited_var.get())
+        control.focus_force()
+        self.root.update()
+        control.event_generate("<KeyPress-Return>")
+        self.root.update()
+        self.assertFalse(view.not_visited_var.get())
+        control.event_generate("<KeyPress-space>")
+        self.root.update()
+        self.assertTrue(view.not_visited_var.get())
 
     def test_individual_cluster_selection_and_single_marker_double_click_zoom_full(self):
         view = self.view
@@ -1461,6 +1619,17 @@ class MapEditorIntegrationTests(unittest.TestCase):
                     self.assertLessEqual(y + widget.winfo_height(), height, (geometry, widget))
             self.assertGreater(app.map_view.canvas.winfo_width(), 300)
             self.assertGreater(app.map_view.canvas.winfo_height(), 180)
+            control = app.map_view.not_visited_check
+            layer_canvas = app.map_view.layer_canvas
+            layer_canvas.yview_moveto(control.winfo_y() / layer_canvas.bbox("all")[3])
+            app.update_idletasks()
+            self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth())
+            self.assertGreaterEqual(control.winfo_rootx(), layer_canvas.winfo_rootx())
+            self.assertLessEqual(control.winfo_rootx() + control.winfo_width(),
+                                 layer_canvas.winfo_rootx() + layer_canvas.winfo_width())
+            self.assertGreaterEqual(control.winfo_rooty(), layer_canvas.winfo_rooty())
+            self.assertLessEqual(control.winfo_rooty() + control.winfo_height(),
+                                 layer_canvas.winfo_rooty() + layer_canvas.winfo_height())
             app.map_view.layer_canvas.yview_moveto(1)
             app.update_idletasks()
             last_layer = app.map_view.layer_checks["other"]

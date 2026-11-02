@@ -3417,7 +3417,7 @@ class ResponsiveGuiTests(unittest.TestCase):
             dialog.apply()
             self.assertEqual(paths[1], dialog.result)
 
-    def test_options_are_in_settings_except_map_layers(self) -> None:
+    def test_options_are_in_settings_except_map_controls(self) -> None:
         app = self.app
         self.assertIn("Settings", [app.notebook.tab(tab, "text") for tab in app.notebook.tabs()])
         pending = list(app.winfo_children())
@@ -3435,11 +3435,11 @@ class ResponsiveGuiTests(unittest.TestCase):
                 configuration.append(widget)
         self.assertGreater(len(checkboxes), 12)
         self.assertEqual(3, len(configuration))
-        layers = set(app.map_view.layer_checks.values())
-        self.assertTrue(layers.issubset(checkboxes))
-        for widget in layers:
+        map_checks = set(app.map_view.layer_checks.values()) | {app.map_view.not_visited_check}
+        self.assertTrue(map_checks.issubset(checkboxes))
+        for widget in map_checks:
             self.assertTrue(str(widget).startswith(str(app.map_tab) + "."), widget)
-        for widget in [check for check in checkboxes if check not in layers] + configuration:
+        for widget in [check for check in checkboxes if check not in map_checks] + configuration:
             self.assertTrue(str(widget).startswith(str(app.settings_tab) + "."), widget)
 
     def test_settings_changes_are_saved_immediately_and_loaded_next_launch(self) -> None:

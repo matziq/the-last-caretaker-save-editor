@@ -174,7 +174,17 @@ class SaveMapView(ttk.Frame):
             for widget in (row, dot, check):
                 widget.bind("<MouseWheel>", self._scroll_layers)
             self.layer_vars[key], self.layer_checks[key] = var, check
-        ttk.Label(layers, text="Named location types (none = all)").pack(anchor=tk.W, pady=(12, 4))
+        ttk.Label(layers, text="Named location filters").pack(anchor=tk.W, pady=(12, 4))
+        self.not_visited_var = tk.BooleanVar(value=False)
+        self.not_visited_check = ttk.Checkbutton(
+            layers, text="Not visited (game files only)", variable=self.not_visited_var,
+            command=self._location_filters_changed, cursor="hand2", takefocus=True,
+        )
+        self.not_visited_check.pack(anchor=tk.W)
+        self.not_visited_check.bind("<MouseWheel>", self._scroll_layers)
+        self.not_visited_check.bind(
+            "<Return>", lambda _event: (self.not_visited_check.invoke(), "break")[1])
+        ttk.Label(layers, text="Types (none = all)").pack(anchor=tk.W, pady=(8, 4))
         self.show_all_types_button = ttk.Button(
             layers, text="Show all types", command=self._clear_location_type_filter,
             state=tk.DISABLED,
@@ -186,7 +196,7 @@ class SaveMapView(ttk.Frame):
             var = tk.BooleanVar(value=False)
             legend = tk.Checkbutton(
                 layers, text=f"\u25a0 {label}", foreground=color, activeforeground=color, anchor=tk.W,
-                variable=var, command=self._location_types_changed,
+                variable=var, command=self._location_filters_changed,
                 cursor="hand2", takefocus=True,
             )
             legend.pack(fill=tk.X)
@@ -242,7 +252,7 @@ class SaveMapView(ttk.Frame):
 
     def _layers_changed(self) -> None:
         if not self.layer_vars["locations"].get():
-            self._reset_location_type_filter()
+            self._reset_location_filters()
         self.apply_filter()
         if self.on_layers_changed is not None:
             self.on_layers_changed()
@@ -255,14 +265,18 @@ class SaveMapView(ttk.Frame):
             var.set(False)
         self.show_all_types_button.configure(state=tk.DISABLED)
 
+    def _reset_location_filters(self) -> None:
+        self._reset_location_type_filter()
+        self.not_visited_var.set(False)
+
     def _clear_location_type_filter(self) -> None:
         self._reset_location_type_filter()
         self.apply_filter(fit=True)
 
-    def _location_types_changed(self) -> None:
+    def _location_filters_changed(self) -> None:
         selected = self._selected_location_types()
         self.show_all_types_button.configure(state=tk.NORMAL if selected else tk.DISABLED)
-        if selected and not self.layer_vars["locations"].get():
+        if (selected or self.not_visited_var.get()) and not self.layer_vars["locations"].get():
             self.layer_vars["locations"].set(True)
             if self.on_layers_changed is not None:
                 self.on_layers_changed()
@@ -275,7 +289,7 @@ class SaveMapView(ttk.Frame):
     def reset(self, message: str = "Load a save, then open Map to read saved positions.") -> None:
         self._cancel_warp()
         self.warp_button.configure(state=tk.DISABLED)
-        self._reset_location_type_filter()
+        self._reset_location_filters()
         self.data = None
         self._populate_location_list()
         self.visible = []
@@ -295,7 +309,7 @@ class SaveMapView(ttk.Frame):
 
     def clear_filter(self) -> None:
         self.query.set("")
-        self._reset_location_type_filter()
+        self._reset_location_filters()
         self.apply_filter(fit=True)
 
     def apply_filter(self, *, fit: bool = False, refresh_list: bool = True) -> None:
@@ -314,11 +328,14 @@ class SaveMapView(ttk.Frame):
             self.layer_checks[key].configure(text=f"{label} ({counts[key]:,})")
         enabled = {key for key, var in self.layer_vars.items() if var.get()}
         selected_types = self._selected_location_types()
+        not_visited = self.not_visited_var.get()
+        only_locations = bool(selected_types) or not_visited
         query = self.query.get().strip()
         self.visible = [point for point in world_points
                         if point.layer in enabled
-                        and (not selected_types or (
-                            point.layer == "locations" and point.location_type in selected_types))
+                        and (not only_locations or point.layer == "locations")
+                        and (not selected_types or point.location_type in selected_types)
+                        and (not not_visited or point.in_save is False)
                         and self.matches_filter(query, point.searchable)]
         visible_keys = {point.key for point in self.visible}
         remaining = [point for point in self.selected_group if point.key in visible_keys]
@@ -328,10 +345,11 @@ class SaveMapView(ttk.Frame):
         notice = "".join(f" | {text}" for text in self.data.notices)
         type_names = [label for key, label, _color in LOCATION_TYPES if key in selected_types]
         type_status = f" | Location types only: {', '.join(type_names)}" if type_names else ""
+        visit_status = " | Not visited (game files only)" if not_visited else ""
         self.status.set(
             f"{len(self.visible):,} matching objects / {len(world_points):,} mapped in this world"
             f" | {self.data.skipped_positions:,} actor(s) without supported positions"
-            f"{type_status}{warning}{notice}")
+            f"{type_status}{visit_status}{warning}{notice}")
         if fit:
             self.fit_visible()
         else:
@@ -368,6 +386,8 @@ class SaveMapView(ttk.Frame):
         selected_types = self._selected_location_types()
         if selected_types and (point.layer != "locations" or point.location_type not in selected_types):
             self._reset_location_type_filter()
+        if self.not_visited_var.get() and (point.layer != "locations" or point.in_save is not False):
+            self.not_visited_var.set(False)
         self.query.set("")
         self.layer_vars[point.layer].set(True)
         self.apply_filter(refresh_list=False)
