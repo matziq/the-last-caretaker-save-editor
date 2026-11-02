@@ -434,10 +434,11 @@ the layers describe the selected world's available objects.
 **Map > Sites / boats** lists every named site in the selected world, even
 when its map layer is off or the map's Find filter hides it. Choose **Boats**
 to locate saved boat roots, or **All mapped objects** to browse the other markers.
-Type a list search and press Enter or **Find in list**. Select a row and use
-**Show on map** (or double-click/press Enter) to center it and open
-its coordinates, distance and identity. This enables its layer and clears the
-map's Find filter; it never moves the player, boat, or any saved object.
+Type a list search and press Enter or **Find in list**. Selecting a row
+immediately centers the object at the maximum zoom level while keeping the list
+open. **Show on map** (or double-click/press Enter) also opens its coordinates,
+distance and identity. This enables its layer and clears the map's Find filter;
+it never moves the player, boat, or any saved object.
 Boat equipment is not misidentified as a separate boat. Player warp leaves boats
 behind, so use the Boats list to find your previous vessel after warping.
 
@@ -450,7 +451,14 @@ or completed.
 
 **Named locations** shows places such as Lazarus Complex, Platform Omega,
 Exodus Station, refuel outposts, seed reserves, and Gyrocopyter platforms as
-labelled squares. The save stores only these places' identities and flags in
+labelled squares, color-coded by type: caves, gyrocopter platforms, towers,
+stations/facilities, outposts, reserves/vaults, habitat nodes, NDN growth nodes,
+graves, docks/platforms, silos, quarantine stacks, navigation beacons, and other
+landmarks. The **Type** column and object details name the category, so color is
+not the only way to distinguish sites. **Map > Layers** includes the color legend.
+Classification uses game identifiers as well as display names: for example,
+First Whisper and North Lantern are caves even though their names do not say so.
+The save stores only these places' identities and flags in
 the world's `Locators` list — **not their coordinates** — so the positions come
 from the bundled `named_locations.json`, extracted read-only from the game's
 `VoyageWorld2` level (116 places, game v6). The details panel states that the
@@ -485,7 +493,11 @@ Drag the map to pan, use the mouse wheel or **Zoom + / -**, and click
 far outliers such as North Bastion, about 100 km south, are left outside the
 frame; search for one to frame it). **Center on player** uses that
 world's unique saved player position. With the canvas focused, arrow keys pan
-and `+` / `-` zoom. **North is up**: in this world north is **−Y** (North
+and `+` / `-` zoom. **Zoom full** returns to the selected object's maximum zoom
+after panning or zooming out. Selecting a single marker or choosing an individual
+object in a cluster also centers it at maximum zoom; double-clicking a cluster
+still frames the cluster's objects. Maximum-zoom grid labels include fractional
+meters. **North is up**: in this world north is **−Y** (North
 Bastion and North Lantern sit at negative Y, South Echo at positive Y), so +Y
 runs down the screen and +X (east) runs right, matching an unmirrored top view.
 Grid labels show the raw saved X/Y values.
@@ -498,6 +510,11 @@ Nearby objects
 share a numbered marker (which may contain several layers): select an object
 in the inspector, or double-click
 the marker to zoom in. **Copy** copies the inspector text.
+
+Boats are currently locatable, not movable by **Move selected to player**.
+Moving a complete boat safely requires handling its attached equipment,
+component transforms, and related actor records across save cells; changing
+only the hull's coordinates is not a supported boat warp.
 
 ### Warp the player
 

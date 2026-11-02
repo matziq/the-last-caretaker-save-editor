@@ -510,6 +510,66 @@ class NamedLocationTests(unittest.TestCase):
                 self.assertAlmostEqual(y, locations[name].position[1], delta=1)
                 self.assertEqual(WORLD, locations[name].world)
 
+    def test_location_types_use_identifiers_when_display_names_hide_the_type(self):
+        examples = (
+            ("Cave01", "First Whisper", "caves"),
+            ("Cave04", "North Lantern", "caves"),
+            ("GyrocopyterPlatformA", "Gyrocopyter Platform A", "gyrocopter"),
+            ("GyrocopterTower", "Gyrocopter tower", "gyrocopter"),
+            ("UnlistedTower", "Unlisted Tower", "towers"),
+            ("LazarusComplex", "Lazarus Complex", "stations"),
+            ("StarChildA", "Courier Sieve Node Facility", "stations"),
+            ("RefuelOutpostA", "Refuel Outpost Gamma", "outposts"),
+            ("SubmergedLab", "Research Outpost Theta-9", "outposts"),
+            ("SeedReserve_01", "Seed Reserve 01", "reserves"),
+            ("SeedVaultA", "Seed Vault Prometheus", "reserves"),
+            ("HeliosReserveA", "Helios Reserve Orion", "reserves"),
+            ("HabitatNode01", "Habitat Node 01-2.5", "habitats"),
+            ("GrowthContainer03", "NDNs Node -10,-2", "growth_nodes"),
+            ("YorkGrave", "York Grave", "graves"),
+            ("SanctuaryDock12", "Sanctuary Dock 12", "docks"),
+            ("Platform_Omega", "Platform Omega", "docks"),
+            ("SiloA", "MCV-12 Eternal Flame", "silos"),
+            ("QuarantineStackAmen", "Quarantine Stack Amen", "quarantine"),
+            ("NavigationBeacon15", "Navigation Beacon 15", "beacons"),
+            ("Maze1", "Transposium", "landmarks"),
+            ("FuturePlace", "Future place", "landmarks"),
+        )
+        for ident, name, expected in examples:
+            with self.subTest(ident=ident):
+                self.assertEqual(expected, maps.named_location_type(ident, name))
+                self.assertEqual(expected, maps.named_location_type(ident.upper(), name.upper()))
+
+    def test_types_reach_map_points_search_and_colors_for_the_entire_catalog(self):
+        raw = save([], [], player_position=(0, 0, 0))
+        data = maps.read_map(raw, named_locations=maps.NAMED_LOCATIONS_PATH)
+        sites = [point for point in data.points if point.layer == "locations"]
+        counts = Counter(point.location_type for point in sites)
+        self.assertEqual(set(maps.LOCATION_TYPE_NAMES), set(counts))
+        for point in sites:
+            self.assertEqual(maps.LOCATION_TYPE_NAMES[point.location_type], point.type_label)
+            self.assertEqual(maps.LOCATION_TYPE_COLORS[point.location_type], point.color)
+            self.assertIn(point.type_label, point.searchable)
+        cave = next(point for point in sites if point.label == "First Whisper")
+        self.assertEqual("caves", cave.location_type)
+        self.assertTrue(gui.LastCaretakerEditor._matches_filter("caves", cave.searchable))
+        player = data.player(WORLD)
+        self.assertEqual(maps.LAYER_COLORS["player"], player.color)
+        self.assertEqual("Player", player.type_label)
+
+    def test_location_colors_are_distinct_and_readable_on_map_and_list_backgrounds(self):
+        def luminance(color):
+            channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            linear = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+                      for v in channels]
+            return sum(value * weight for value, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+        self.assertEqual(len(maps.LOCATION_TYPES), len(set(maps.LOCATION_TYPE_COLORS.values())))
+        for key, _label, color in maps.LOCATION_TYPES:
+            for background in ("#ffffff", "#eef3f6"):
+                with self.subTest(kind=key, background=background):
+                    self.assertGreaterEqual(
+                        (luminance(background) + 0.05) / (luminance(color) + 0.05), 4.5)
+
     def test_extractor_parses_single_and_grouped_locator_names(self):
         def fstring(text):
             return struct.pack("<i", len(text) + 1) + text.encode() + b"\0"
@@ -529,6 +589,21 @@ class NamedLocationTests(unittest.TestCase):
 
 
 class MapCameraTests(unittest.TestCase):
+    def test_focus_centers_exactly_at_maximum_zoom_and_obeys_the_zoom_cap(self):
+        camera = maps.MapCamera(-500, 300, 0.001)
+        target = (6918.06, -13828.75, 2.56)
+        camera.focus(target)
+        self.assertEqual(target[:2], (camera.x, camera.y))
+        self.assertEqual(maps.MapCamera.MAX_SCALE, camera.scale)
+        self.assertEqual((400, 300), camera.screen(*target[:2], 800, 600))
+        camera.zoom(2, 400, 300, 800, 600)
+        self.assertEqual(maps.MapCamera.MAX_SCALE, camera.scale)
+        camera.zoom(0.5, 400, 300, 800, 600)
+        camera.pan(100, 100)
+        camera.focus(target)
+        self.assertEqual(target[:2], (camera.x, camera.y))
+        self.assertEqual(maps.MapCamera.MAX_SCALE, camera.scale)
+
     def test_roundtrip_orientation_pan_and_cursor_anchored_zoom(self):
         camera = maps.MapCamera(123, -456, 2)
         pixel = camera.screen(500, 300, 800, 600)
@@ -619,6 +694,7 @@ class MapViewTests(unittest.TestCase):
         self.assertTrue(view.layer_vars["locations"].get())
         self.assertEqual("", view.query.get())
         self.assertEqual((500, -900), (view.camera.x, view.camera.y))
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
         self.assertIn("Source: Game files only", view.details.get("1.0", tk.END))
         view.list_scope.set("Boats")
         view.list_query.set("")
@@ -634,6 +710,87 @@ class MapViewTests(unittest.TestCase):
         self.assertEqual({}, view.location_rows)
         view.reset()
         self.assertEqual((), view.location_tree.get_children())
+
+    def test_selecting_a_site_row_automatically_zooms_full_and_keeps_list_open(self):
+        view = self.view
+        site = maps.MapPoint("cave", WORLD, "CaveLocator", "First Whisper", "locations",
+                             (800, -500, 10), location_type="caves", in_save=False)
+        view.set_data(maps.MapData((self.points[0], site), (WORLD,)))
+        view.layer_vars["locations"].set(False)
+        view.query.set("player")
+        view.apply_filter()
+        view.inspector.select(view.list_tab)
+        view._fit_pending = True
+        view.location_tree.selection_set("0")
+        self.root.update()
+        self.assertEqual(site, view.selected)
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
+        self.assertEqual(site.position[:2], (view.camera.x, view.camera.y))
+        self.assertFalse(view._fit_pending)
+        self.assertEqual(str(view.list_tab), view.inspector.select())
+        self.assertEqual(("0",), view.location_tree.selection())
+        self.assertEqual("", view.query.get())
+        self.assertTrue(view.layer_vars["locations"].get())
+        self.assertEqual("Caves", view.location_tree.set("0", "kind"))
+        self.assertIn("Type: Caves", view.details.get("1.0", tk.END))
+
+    def test_zoom_full_button_reframes_selected_object_and_reset_disables_it(self):
+        view = self.view
+        self.assertIn("disabled", view.zoom_full_button.state())
+        view._select_group([self.points[1]])
+        self.assertNotIn("disabled", view.zoom_full_button.state())
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
+        view.zoom(0.001)
+        view._pan(100, 20)
+        view.zoom_full_button.invoke()
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
+        self.assertEqual(self.points[1].position[:2], (view.camera.x, view.camera.y))
+        view.reset()
+        self.assertIn("disabled", view.zoom_full_button.state())
+
+    def test_named_site_colors_match_canvas_rows_and_legend(self):
+        view = self.view
+        sites = (
+            maps.MapPoint("cave", WORLD, "Cave01", "First Whisper", "locations",
+                          (0, 0, 1), location_type="caves"),
+            maps.MapPoint("gyro", WORLD, "GyroPlatform", "Gyrocopter platform", "locations",
+                          (100, 0, 1), location_type="gyrocopter"),
+            maps.MapPoint("tower", WORLD, "Tower", "Unlisted Tower", "locations",
+                          (200, 0, 1), location_type="towers"),
+        )
+        view.set_data(maps.MapData(sites, (WORLD,)))
+        view.draw()
+        for tag, group in view.groups.items():
+            point = group[0]
+            shapes = [item for item in view.canvas.find_withtag(tag)
+                      if view.canvas.type(item) == "rectangle"]
+            self.assertEqual(1, len(shapes))
+            self.assertEqual(point.color, view.canvas.itemcget(shapes[0], "fill"))
+        for iid, point in view.location_rows.items():
+            self.assertEqual(point.type_label, view.location_tree.set(iid, "kind"))
+            self.assertEqual((point.location_type,), view.location_tree.item(iid, "tags"))
+            self.assertEqual(point.color, str(view.location_tree.tag_configure(
+                point.location_type, "foreground")))
+            self.assertEqual(point.color, view.location_legend[point.location_type].cget("foreground"))
+
+    def test_individual_cluster_selection_and_single_marker_double_click_zoom_full(self):
+        view = self.view
+        cluster = next(group for group in view.groups.values() if len(group) == 2)
+        view._select_group(cluster)
+        self.assertLess(view.camera.scale, maps.MapCamera.MAX_SCALE)
+        view.selection_list.selection_clear(0, tk.END)
+        view.selection_list.selection_set(1)
+        view._select_list()
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
+        self.assertEqual(self.points[2].position[:2], (view.camera.x, view.camera.y))
+        view.draw()
+        width, height = view.canvas.winfo_width(), view.canvas.winfo_height()
+        view._expand(SimpleNamespace(x=width / 2, y=height / 2))
+        self.assertEqual(maps.MapCamera.MAX_SCALE, view.camera.scale)
+        view.draw()
+        labels = [view.canvas.itemcget(item, "text") for item in view.canvas.find_all()
+                  if view.canvas.type(item) == "text"]
+        self.assertTrue(any("1,000." in text for text in labels))
 
     def test_boat_layer_only_classifies_root_boats_not_their_equipment(self):
         raw = save([], [

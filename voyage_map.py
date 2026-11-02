@@ -8,7 +8,7 @@ import struct
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable
+from typing import Callable, ClassVar
 
 import voyage_gvas as gvas
 import voyage_humans as humans
@@ -27,7 +27,59 @@ LAYERS = (
     ("other", "Other saved actors", "#727b85", False),
 )
 LAYER_NAMES = {key: label for key, label, _color, _enabled in LAYERS}
+LAYER_COLORS = {key: color for key, _label, color, _enabled in LAYERS}
+LOCATION_TYPES = (
+    ("caves", "Caves", "#7946a0"),
+    ("gyrocopter", "Gyrocopter platforms", "#006a70"),
+    ("towers", "Towers", "#9d3661"),
+    ("stations", "Stations / facilities", "#245ca0"),
+    ("outposts", "Outposts", "#a34415"),
+    ("reserves", "Reserves / vaults", "#397236"),
+    ("habitats", "Habitat nodes", "#76600b"),
+    ("growth_nodes", "NDN growth nodes", "#7a4e36"),
+    ("graves", "Graves", "#59616e"),
+    ("docks", "Docks / platforms", "#38647b"),
+    ("silos", "Silos", "#a12e31"),
+    ("quarantine", "Quarantine stacks", "#704173"),
+    ("beacons", "Navigation beacons", "#765b00"),
+    ("landmarks", "Other landmarks", "#6e5265"),
+)
+LOCATION_TYPE_NAMES = {key: label for key, label, _color in LOCATION_TYPES}
+LOCATION_TYPE_COLORS = {key: color for key, _label, color in LOCATION_TYPES}
 MOVABLE_ACTOR_PREFIXES = ("BP_Item_HumanSeed_", "BP_Module_Human_Pod_")
+
+
+def named_location_type(ident: str, name: str) -> str:
+    """Use game identifiers for places whose display names hide their type."""
+    ident = ident.casefold()
+    text = f"{ident} {name.casefold()}"
+    if ident.startswith("cave") or "cave" in text:
+        return "caves"
+    if "gyro" in text:
+        return "gyrocopter"
+    if "habitatnode" in ident or "habitat node" in text:
+        return "habitats"
+    if "growthcontainer" in ident or "ndns node" in text:
+        return "growth_nodes"
+    if "quarantine" in text:
+        return "quarantine"
+    if "grave" in text:
+        return "graves"
+    if "beacon" in text:
+        return "beacons"
+    if ident.startswith("silo") or "silo" in text:
+        return "silos"
+    if "outpost" in text:
+        return "outposts"
+    if "reserve" in text or "vault" in text:
+        return "reserves"
+    if "tower" in text:
+        return "towers"
+    if any(word in text for word in ("dock", "platform", "provingdeck", "proving deck")):
+        return "docks"
+    if any(word in text for word in ("station", "complex", "facility", "depot", "starchild")):
+        return "stations"
+    return "landmarks"
 
 
 @dataclass(frozen=True)
@@ -44,6 +96,17 @@ class MapPoint:
     actor_offset: int | None = None
     move_block_reason: str = "Only loose human seed items and human pods can be moved."
     in_save: bool | None = True
+    location_type: str = "landmarks"
+
+    @property
+    def type_label(self) -> str:
+        return (LOCATION_TYPE_NAMES[self.location_type] if self.layer == "locations"
+                else LAYER_NAMES[self.layer])
+
+    @property
+    def color(self) -> str:
+        return (LOCATION_TYPE_COLORS[self.location_type] if self.layer == "locations"
+                else LAYER_COLORS[self.layer])
 
     @property
     def source(self) -> str:
@@ -56,7 +119,7 @@ class MapPoint:
     @property
     def searchable(self) -> str:
         return " ".join((self.label, self.actor, self.world, self.social_id, self.profession,
-                         self.source, *self.details))
+                         self.source, self.type_label, *self.details))
 
 
 @dataclass(frozen=True)
@@ -440,6 +503,7 @@ def read_map(
                     f"In this save's map-marker list: {listed}",
                     f"Game identifier: {location.ident}" if location.ident else ""))),
                 in_save=None if saved is None else location.actor in saved,
+                location_type=named_location_type(location.ident, location.name),
             ))
         persistent = humans._field(world_entry.props, "PersistentActors", required=False)
         if persistent is None:
@@ -500,6 +564,8 @@ def read_map(
 
 @dataclass
 class MapCamera:
+    MIN_SCALE: ClassVar[float] = 0.00001
+    MAX_SCALE: ClassVar[float] = 1000.0
     x: float = 0.0
     y: float = 0.0
     scale: float = 1.0
@@ -521,11 +587,15 @@ class MapCamera:
         self.x, self.y = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
         self.scale = min(max(width - 100, 1) / max(max(xs) - min(xs), 100),
                          max(height - 100, 1) / max(max(ys) - min(ys), 100))
-        self.scale = min(max(self.scale, 0.00001), 1000)
+        self.scale = min(max(self.scale, self.MIN_SCALE), self.MAX_SCALE)
+
+    def focus(self, position: humans.Position3D) -> None:
+        self.x, self.y = position[:2]
+        self.scale = self.MAX_SCALE
 
     def zoom(self, factor: float, px: float, py: float, width: float, height: float) -> None:
         before = self.world(px, py, width, height)
-        self.scale = min(max(self.scale * factor, 0.00001), 1000)
+        self.scale = min(max(self.scale * factor, self.MIN_SCALE), self.MAX_SCALE)
         after = self.world(px, py, width, height)
         self.x += before[0] - after[0]
         self.y += before[1] - after[1]

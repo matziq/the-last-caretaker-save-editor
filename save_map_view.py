@@ -7,7 +7,9 @@ from collections import Counter, defaultdict
 from tkinter import ttk
 from typing import Callable
 
-from voyage_map import LAYERS, LAYER_NAMES, MapCamera, MapData, MapPoint
+from voyage_map import (
+    LAYERS, LAYER_NAMES, LOCATION_TYPES, MapCamera, MapData, MapPoint,
+)
 
 
 class SaveMapView(ttk.Frame):
@@ -65,6 +67,10 @@ class SaveMapView(ttk.Frame):
             ("Zoom +", lambda: self.zoom(1.5)), ("Zoom -", lambda: self.zoom(1 / 1.5)),
         ):
             ttk.Button(toolbar, text=text, command=command).pack(side=tk.LEFT, padx=(0, 4))
+        self.zoom_full_button = ttk.Button(
+            toolbar, text="Zoom full", command=self.zoom_selected, state=tk.DISABLED,
+        )
+        self.zoom_full_button.pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(toolbar, text="Refresh map", command=reload_map).pack(side=tk.LEFT, padx=4)
         self.warp_button = ttk.Button(
             toolbar, text="Warp player...", command=self._toggle_warp, state=tk.DISABLED,
@@ -126,16 +132,21 @@ class SaveMapView(ttk.Frame):
         table.grid(row=2, column=0, sticky="nsew", pady=(4, 0))
         table.columnconfigure(0, weight=1)
         table.rowconfigure(0, weight=1)
-        self.location_tree = ttk.Treeview(table, columns=("name", "source"), show="headings",
+        self.location_tree = ttk.Treeview(table, columns=("name", "kind", "source"), show="headings",
                                           selectmode="browse", height=5)
         self.location_tree.heading("name", text="Name")
+        self.location_tree.heading("kind", text="Type")
         self.location_tree.heading("source", text="Source")
-        self.location_tree.column("name", width=150, minwidth=80)
+        self.location_tree.column("name", width=130, minwidth=80)
+        self.location_tree.column("kind", width=135, minwidth=100)
         self.location_tree.column("source", width=130, minwidth=85)
+        for key, _label, color in LOCATION_TYPES:
+            self.location_tree.tag_configure(key, foreground=color)
         self.location_tree.grid(row=0, column=0, sticky="nsew")
         list_scroll = ttk.Scrollbar(table, command=self.location_tree.yview)
         list_scroll.grid(row=0, column=1, sticky="ns")
         self.location_tree.configure(yscrollcommand=list_scroll.set)
+        self.location_tree.bind("<<TreeviewSelect>>", self._show_list_point)
         self.location_tree.bind("<Double-Button-1>", lambda _e: self._show_list_point())
         self.location_tree.bind("<Return>", lambda _e: self._show_list_point())
         self.layers_tab.rowconfigure(0, weight=1)
@@ -163,6 +174,13 @@ class SaveMapView(ttk.Frame):
             for widget in (row, dot, check):
                 widget.bind("<MouseWheel>", self._scroll_layers)
             self.layer_vars[key], self.layer_checks[key] = var, check
+        ttk.Label(layers, text="Named location types").pack(anchor=tk.W, pady=(12, 4))
+        self.location_legend: dict[str, tk.Label] = {}
+        for key, label, color in LOCATION_TYPES:
+            legend = tk.Label(layers, text=f"\u25a0 {label}", foreground=color, anchor=tk.W)
+            legend.pack(fill=tk.X)
+            legend.bind("<MouseWheel>", self._scroll_layers)
+            self.location_legend[key] = legend
         self.details_tab.columnconfigure(0, weight=1)
         self.details_tab.rowconfigure(4, weight=1)
         ttk.Label(self.details_tab, text="Objects at selected marker").grid(row=0, column=0, sticky="w")
@@ -242,12 +260,13 @@ class SaveMapView(ttk.Frame):
         self.query.set("")
         self.apply_filter(fit=True)
 
-    def apply_filter(self, *, fit: bool = False) -> None:
+    def apply_filter(self, *, fit: bool = False, refresh_list: bool = True) -> None:
         if self.data is None:
             return
         self._cancel_warp()
         world = self.world_var.get()
-        self._populate_location_list()
+        if refresh_list:
+            self._populate_location_list()
         self.warp_button.configure(
             state=tk.NORMAL if self.warp_player_callback and self.data.player(world) else tk.DISABLED,
         )
@@ -290,20 +309,21 @@ class SaveMapView(ttk.Frame):
         for index, point in enumerate(sorted(points, key=lambda p: (p.label.casefold(), p.actor))):
             iid = str(index)
             self.location_rows[iid] = point
-            self.location_tree.insert("", tk.END, iid=iid, values=(point.label, point.source))
+            self.location_tree.insert(
+                "", tk.END, iid=iid, values=(point.label, point.type_label, point.source),
+                tags=(point.location_type,) if point.layer == "locations" else (),
+            )
         self.location_tree.heading("name", text=f"Name ({len(points):,})")
 
-    def _show_list_point(self) -> None:
+    def _show_list_point(self, event=None) -> None:
         selected = self.location_tree.selection()
         point = self.location_rows.get(selected[0]) if selected else None
         if point is None or self.data is None:
             return
         self.query.set("")
         self.layer_vars[point.layer].set(True)
-        self.apply_filter()
-        self.camera.x, self.camera.y = point.position[:2]
-        self.camera.scale = max(self.camera.scale, 1.0)
-        self._select_group([point])
+        self.apply_filter(refresh_list=False)
+        self._select_group([point], show_details=event is None)
         if self.on_layers_changed is not None:
             self.on_layers_changed()
 
@@ -335,6 +355,12 @@ class SaveMapView(ttk.Frame):
             self.schedule_draw()
         elif self.data is not None:
             self.status.set("No unique saved player position is available in this world.")
+
+    def zoom_selected(self) -> None:
+        if self.selected is not None:
+            self._fit_pending = False
+            self.camera.focus(self.selected.position)
+            self.schedule_draw()
 
     def zoom(self, factor: float, x: float | None = None, y: float | None = None) -> str:
         width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
@@ -368,6 +394,8 @@ class SaveMapView(ttk.Frame):
         super().destroy()
 
     def draw(self) -> None:
+        if self._draw_job is not None:
+            self.after_cancel(self._draw_job)
         self._draw_job = None
         canvas = self.canvas
         canvas.delete("all")
@@ -387,7 +415,6 @@ class SaveMapView(ttk.Frame):
             x, y = self.camera.screen(*point.position[:2], width, height)
             if -20 <= x <= width + 20 and -20 <= y <= height + 20:
                 buckets[math.floor(x / 18), math.floor(y / 18)].append(point)
-        colors = {key: color for key, _label, color, _enabled in LAYERS}
         priority = {key: index for index, key in enumerate(
             ("humans", "player", "locations", "boats", "pods", "rockets", "checkpoints", "containers", "other"))}
         labels: list[tuple[float, float, str, str]] = []
@@ -400,7 +427,7 @@ class SaveMapView(ttk.Frame):
             x, y = self.camera.screen(x, y, width, height)
             tag = f"marker:{len(self.groups)}"
             self.groups[tag] = group
-            color = colors[point.layer]
+            color = point.color
             radius = 11 if len(group) > 1 else (7 if point.layer in ("player", "humans") else 4)
             selected = self.selected in group
             outline = "#142f43" if selected else "#ffffff"
@@ -444,19 +471,20 @@ class SaveMapView(ttk.Frame):
         power = 10 ** math.floor(math.log10(target))
         step = next(multiplier * power for multiplier in (1, 2, 5, 10)
                     if multiplier * power >= target)
+        decimals = max(0, -math.floor(math.log10(step)))
         left, top = self.camera.world(0, 0, width, height)
         right, bottom = self.camera.world(width, height, width, height)
         for i in range(math.ceil(left / step), math.floor(right / step) + 1):
             value = i * step
             x, _ = self.camera.screen(value, 0, width, height)
             self.canvas.create_line(x, 0, x, height, fill="#cbd7df")
-            self.canvas.create_text(x + 3, height - 28, text=f"{value:,.0f}", anchor=tk.W,
+            self.canvas.create_text(x + 3, height - 28, text=f"{value:,.{decimals}f}", anchor=tk.W,
                                     fill="#455e70", font="TkDefaultFont")
         for i in range(math.ceil(top / step), math.floor(bottom / step) + 1):
             value = i * step
             _, y = self.camera.screen(0, value, width, height)
             self.canvas.create_line(0, y, width, y, fill="#cbd7df")
-            self.canvas.create_text(6, y - 3, text=f"{value:,.0f}", anchor=tk.SW,
+            self.canvas.create_text(6, y - 3, text=f"{value:,.{decimals}f}", anchor=tk.SW,
                                     fill="#455e70", font="TkDefaultFont")
 
     def _hit(self, x: float, y: float) -> list[MapPoint]:
@@ -516,22 +544,25 @@ class SaveMapView(ttk.Frame):
         group = self._hit(event.x, event.y)
         if group:
             self._select_group(group)
-            self.camera.fit([p.position for p in group],
-                            self.canvas.winfo_width(), self.canvas.winfo_height())
+            if len(group) > 1:
+                self.camera.fit([p.position for p in group],
+                                self.canvas.winfo_width(), self.canvas.winfo_height())
             self.schedule_draw()
         return "break"
 
-    def _select_group(self, points: list[MapPoint]) -> None:
+    def _select_group(self, points: list[MapPoint], *, show_details: bool = True) -> None:
         self.selected_group = sorted(points, key=lambda p: (p.label, p.actor))
         self.selection_list.delete(0, tk.END)
         for point in self.selected_group:
             self.selection_list.insert(tk.END, point.label)
         self.selected = None
+        self.zoom_full_button.configure(state=tk.DISABLED)
         self.move_button.configure(state=tk.DISABLED)
         if points:
             self.selection_list.selection_set(0)
-            self.inspector.select(self.details_tab)
-            self._select_list()
+            if show_details:
+                self.inspector.select(self.details_tab)
+            self._select_list(zoom=len(points) == 1)
         else:
             self.inspector.select(self.layers_tab)
             self._set_details("Click a marker to see its saved coordinates and identity.\n\n"
@@ -539,12 +570,13 @@ class SaveMapView(ttk.Frame):
                               "or double-click it to zoom in.")
         self.schedule_draw()
 
-    def _select_list(self, _event=None) -> None:
+    def _select_list(self, _event=None, *, zoom: bool = True) -> None:
         selection = self.selection_list.curselection()
         if not selection or self.data is None:
             return
         point = self.selected_group[selection[0]]
         self.selected = point
+        self.zoom_full_button.configure(state=tk.NORMAL)
         movable = (self.move_selected_callback is not None
                    and point.actor_offset is not None and not point.move_block_reason)
         self.move_button.configure(state=tk.NORMAL if movable else tk.DISABLED)
@@ -557,6 +589,7 @@ class SaveMapView(ttk.Frame):
             lines.append(f"Social ID: {point.social_id}")
         if point.profession:
             lines.append(f"Saved profession: {point.profession}")
+        lines.append(f"Type: {point.type_label}")
         lines.extend(point.details)
         lines.append(f"Source: {point.source}")
         lines.append(
@@ -566,6 +599,8 @@ class SaveMapView(ttk.Frame):
         lines.extend((f"Layer: {LAYER_NAMES[point.layer]}", f"World: {point.world}",
                       f"Actor: {point.actor}"))
         self._set_details("\n".join(lines))
+        if zoom:
+            self.zoom_selected()
         self.schedule_draw()
 
     def _move_selected(self) -> None:
