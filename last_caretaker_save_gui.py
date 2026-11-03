@@ -499,34 +499,43 @@ class _PlayerWarpDialog(simpledialog.Dialog):
         super().__init__(parent, "Player warp destination")
 
     def body(self, master):
+        master.columnconfigure(1, weight=1)
         ttk.Label(master, text=f"World: {self.world}", wraplength=480).grid(
             row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 8))
-        for row, (label, value) in enumerate(zip(("X (m):", "Y (m):"), self.destination), 1):
+        self.coordinate_entries: dict[str, ttk.Entry] = {}
+        for row, (axis, value) in enumerate(zip(("X", "Y", "Z"), self.destination), 1):
+            label = "Height Z (m):" if axis == "Z" else f"{axis} (m):"
             ttk.Label(master, text=label).grid(row=row, column=0, sticky=tk.W, padx=(0, 12))
-            ttk.Label(master, text=f"{value:,.3f}").grid(row=row, column=1, sticky=tk.W)
-        ttk.Label(master, text="Height Z (m):").grid(row=3, column=0, sticky=tk.W, padx=(0, 12))
-        self.height = ttk.Entry(master, width=24)
-        self.height.insert(0, repr(self.destination[2]))
-        self.height.grid(row=3, column=1, sticky=tk.EW, pady=4)
+            entry = ttk.Entry(master, width=24)
+            entry.insert(0, repr(value))
+            entry.grid(row=row, column=1, sticky=tk.EW, pady=4)
+            self.coordinate_entries[axis] = entry
         ttk.Label(
             master, wraplength=480,
-            text="Height starts at the saved player's current Z, not the terrain or water surface. "
-                 "Choose a known safe height. The map cannot detect terrain, buildings, water "
-                 "depth or collision. You could appear underground, underwater or in midair.\n\n"
+            text="Coordinates are in meters. The suggested height may not be the terrain or water "
+                 "surface. Choose a known safe height. The map cannot detect terrain, buildings, "
+                 "water depth or collision. You could appear underground, underwater or in midair.\n\n"
                  "OK reviews the move; the next confirmation creates a backup and writes the save. "
                  "This moves only the player, not a ship or vehicle.",
         ).grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=(10, 0))
-        return self.height
+        return self.coordinate_entries["X"]
 
     def validate(self) -> bool:
-        try:
-            height = float(self.height.get())
-            if not math.isfinite(height) or not math.isfinite(height * 100):
-                raise ValueError("Height must be finite.")
-        except ValueError:
-            messagebox.showerror("Invalid height", "Enter a finite height in meters.", parent=self)
-            return False
-        self.result = (self.destination[0], self.destination[1], height)
+        coordinates = []
+        for axis in ("X", "Y", "Z"):
+            entry = self.coordinate_entries[axis]
+            try:
+                value = float(entry.get())
+                if not math.isfinite(value) or not math.isfinite(value * 100):
+                    raise ValueError("Coordinate must be finite.")
+            except ValueError:
+                messagebox.showerror(
+                    "Invalid coordinate", f"Enter a finite {axis} coordinate in meters.", parent=self)
+                entry.focus_set()
+                entry.selection_range(0, tk.END)
+                return False
+            coordinates.append(value)
+        self.result = (coordinates[0], coordinates[1], coordinates[2])
         return True
 
 
@@ -912,8 +921,8 @@ class LastCaretakerEditor(tk.Tk):
         if not messagebox.askyesno(
             "Warp player and save?",
             f"Move the saved player in {world}?\n\n"
-            f"From X / Y / Z: {', '.join(f'{value:,.3f}' for value in player.position)} m\n"
-            f"To X / Y / Z: {', '.join(f'{value:,.3f}' for value in target)} m\n\n"
+            f"From X / Y / Z: {', '.join(repr(value) for value in player.position)} m\n"
+            f"To X / Y / Z: {', '.join(repr(value) for value in target)} m\n\n"
             "Terrain, collision and water height are NOT checked. An unsafe position may "
             "leave the player stuck or falling. Only the player moves, not a ship or vehicle.\n\n"
             f"A backup is created before writing (keep {keep}). Restore it if needed. "
@@ -944,7 +953,7 @@ class LastCaretakerEditor(tk.Tk):
             self.status_var.set("Player already at the requested position; no save or backup was needed.")
         else:
             self.status_var.set(
-                f"Warped player to {', '.join(f'{value:,.3f}' for value in target)} m "
+                f"Warped player to {', '.join(repr(value) for value in target)} m "
                 f"(backup: {backup.name}). Load this save in the game.")
             _report_saved(self, document.path)
 

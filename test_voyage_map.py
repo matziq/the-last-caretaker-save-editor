@@ -279,19 +279,30 @@ class PlayerWarpTests(unittest.TestCase):
                     gui.LastCaretakerEditor._save_player_warp(doc, self.player(raw), (1, 2, 3), 3)
             self.assertEqual(original, path.read_bytes())
 
-    def test_height_dialog_rejects_nonfinite_or_invalid_height(self):
-        for value in ("nan", "inf", "-inf", "1e308", "oops", ""):
-            with self.subTest(value=value), patch.object(gui.messagebox, "showerror") as error:
-                dialog = SimpleNamespace(
-                    destination=(12.5, -30.75, 4), height=SimpleNamespace(get=lambda: value),
-                    result=None,
-                )
-                self.assertFalse(gui._PlayerWarpDialog.validate(dialog))
-                error.assert_called_once()
-                self.assertIsNone(dialog.result)
-        dialog = SimpleNamespace(
-            destination=(12.5, -30.75, 4), height=SimpleNamespace(get=lambda: "-18.25"),
-        )
+    def test_coordinate_dialog_rejects_invalid_values_for_each_axis(self):
+        for axis in ("X", "Y", "Z"):
+            for value in ("nan", "inf", "-inf", "1e308", "oops", ""):
+                with self.subTest(axis=axis, value=value), patch.object(
+                    gui.messagebox, "showerror",
+                ) as error:
+                    entries = {
+                        name: Mock(get=Mock(return_value=value if name == axis else "12.5"))
+                        for name in ("X", "Y", "Z")
+                    }
+                    dialog = SimpleNamespace(coordinate_entries=entries, result=None)
+                    self.assertFalse(gui._PlayerWarpDialog.validate(dialog))
+                    error.assert_called_once_with(
+                        "Invalid coordinate", f"Enter a finite {axis} coordinate in meters.",
+                        parent=dialog,
+                    )
+                    entries[axis].focus_set.assert_called_once()
+                    entries[axis].selection_range.assert_called_once_with(0, tk.END)
+                    self.assertIsNone(dialog.result)
+        entries = {
+            axis: Mock(get=Mock(return_value=value))
+            for axis, value in zip(("X", "Y", "Z"), ("12.5", "-3.075e1", "-18.25"))
+        }
+        dialog = SimpleNamespace(coordinate_entries=entries)
         self.assertTrue(gui._PlayerWarpDialog.validate(dialog))
         self.assertEqual((12.5, -30.75, -18.25), dialog.result)
 
@@ -1132,6 +1143,24 @@ class MapViewTests(unittest.TestCase):
                     self.view.list_tab.winfo_rooty() + self.view.list_tab.winfo_height(),
                 )
 
+    def test_coordinate_warp_button_fits_at_minimum_editor_width(self):
+        self.root.deiconify()
+        self.root.geometry("1008x650")
+        self.root.update()
+        button = self.view.warp_coordinates_button
+        for control in (button, self.view.warp_button, self.view.world_combo):
+            with self.subTest(control=control):
+                self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth())
+                self.assertLessEqual(
+                    control.winfo_rootx() + control.winfo_width(),
+                    self.root.winfo_rootx() + self.root.winfo_width(),
+                )
+        search = next(
+            widget for widget in button.master.winfo_children()
+            if isinstance(widget, gui.ttk.Entry) and not isinstance(widget, gui.ttk.Combobox)
+        )
+        self.assertGreaterEqual(search.winfo_width(), 60)
+
     def test_default_layers_toggle_search_clear_and_world_switch(self):
         view = self.view
         self.assertEqual(["p", "h1", "h2"], [p.key for p in view.visible])
@@ -1164,12 +1193,106 @@ class MapViewTests(unittest.TestCase):
         event = SimpleNamespace(x=100, y=150)
         expected = view.camera.world(event.x, event.y,
                                      view.canvas.winfo_width(), view.canvas.winfo_height())
-        view._press(event)
-        view._release(event)
+        with patch.object(view, "_hit", return_value=[]):
+            view._press(event)
+            view._release(event)
         callback.assert_called_once_with(WORLD, (*expected, 0))
         self.assertFalse(view._picking_warp)
         self.assertEqual("Warp player...", view.warp_button.cget("text"))
         self.assertEqual("", view.canvas.cget("cursor"))
+
+    def test_warp_picker_uses_exact_marker_coordinates_including_height(self):
+        view = self.view
+        callback = Mock()
+        view.warp_player_callback = callback
+        point = maps.MapPoint(
+            "target", WORLD, "pod3", "Target", "humans",
+            (1000.125, -2000.875, 3.456789),
+        )
+        view.set_data(maps.MapData((self.points[0], point), (WORLD,)))
+        self.assertIsNone(view.selected)
+        view.draw()
+        x, y = view.camera.screen(*point.position[:2],
+                                  view.canvas.winfo_width(), view.canvas.winfo_height())
+        event = SimpleNamespace(x=x + 2, y=y + 1)
+        self.assertEqual([point], view._hit(event.x, event.y))
+        view._toggle_warp()
+        view._press(event)
+        view._release(event)
+        callback.assert_called_once_with(WORLD, point.position)
+        view._select_group([point])
+        self.assertIn("1000.125, -2000.875, 3.456789", view.details.get("1.0", tk.END))
+
+    def test_warp_picker_uses_exact_game_only_site_coordinates(self):
+        view = self.view
+        callback = Mock()
+        view.warp_player_callback = callback
+        site = maps.MapPoint(
+            "site", WORLD, "CaveLocator", "Cave", "locations",
+            (-321.0123, 456.7891, -12.3456), in_save=False, location_type="caves",
+        )
+        view.layer_vars["locations"].set(True)
+        view.set_data(maps.MapData((self.points[0], site), (WORLD,)))
+        self.assertIsNone(view.selected)
+        view.draw()
+        x, y = view.camera.screen(*site.position[:2],
+                                  view.canvas.winfo_width(), view.canvas.winfo_height())
+        event = SimpleNamespace(x=x, y=y)
+        self.assertEqual([site], view._hit(event.x, event.y))
+        view._toggle_warp()
+        view._press(event)
+        view._release(event)
+        callback.assert_called_once_with(WORLD, site.position)
+
+    def test_clustered_warp_requires_a_choice_unless_an_object_is_selected(self):
+        view = self.view
+        callback = Mock()
+        view.warp_player_callback = callback
+        view.apply_filter()
+        cluster = [self.points[1], self.points[2]]
+        event = SimpleNamespace(x=100, y=150)
+        view._toggle_warp()
+        with patch.object(view, "_hit", return_value=cluster):
+            view._press(event)
+            view._release(event)
+        callback.assert_not_called()
+        self.assertFalse(view._picking_warp)
+        self.assertEqual(str(view.details_tab), view.inspector.select())
+        self.assertIn("Select one", view.status.get())
+        view.selection_list.selection_clear(0, tk.END)
+        view.selection_list.selection_set(1)
+        view._select_list()
+        view.warp_coordinates_button.invoke()
+        callback.assert_called_once_with(WORLD, self.points[2].position)
+
+        callback.reset_mock()
+        view._toggle_warp()
+        with patch.object(view, "_hit", return_value=cluster):
+            view._press(event)
+            view._release(event)
+        callback.assert_called_once_with(WORLD, self.points[2].position)
+
+    def test_coordinate_warp_defaults_to_selected_object_or_current_player(self):
+        view = self.view
+        callback = Mock()
+        view.warp_player_callback = callback
+        view.apply_filter()
+        self.assertNotIn("disabled", view.warp_coordinates_button.state())
+        view.warp_coordinates_button.invoke()
+        callback.assert_called_once_with(WORLD, self.points[0].position)
+
+        callback.reset_mock()
+        view._select_group([self.points[1]])
+        view._toggle_warp()
+        view.warp_coordinates_button.invoke()
+        self.assertFalse(view._picking_warp)
+        callback.assert_called_once_with(WORLD, self.points[1].position)
+
+        callback.reset_mock()
+        view.world_var.set("other-world")
+        view.apply_filter()
+        view.warp_coordinates_button.invoke()
+        callback.assert_called_once_with("other-world", self.points[4].position)
 
     def test_warp_picker_drag_cancel_filter_change_and_missing_player_do_not_warp(self):
         view = self.view
@@ -1192,10 +1315,21 @@ class MapViewTests(unittest.TestCase):
         view.reset()
         self.assertFalse(view._picking_warp)
         self.assertIn("disabled", view.warp_button.state())
+        self.assertIn("disabled", view.warp_coordinates_button.state())
         view.set_data(maps.MapData((self.points[1],), (WORLD,)))
         self.assertIn("disabled", view.warp_button.state())
+        self.assertIn("disabled", view.warp_coordinates_button.state())
         view._toggle_warp()
+        view.warp_coordinates_button.invoke()
         self.assertFalse(view._picking_warp)
+        callback.assert_not_called()
+        another_player = maps.MapPoint(
+            "second-player", WORLD, "player3", "Another player", "player", (1, 2, 3),
+        )
+        view.set_data(maps.MapData((self.points[0], another_player), (WORLD,)))
+        self.assertIn("disabled", view.warp_button.state())
+        self.assertIn("disabled", view.warp_coordinates_button.state())
+        view.warp_coordinates_button.invoke()
         callback.assert_not_called()
 
     def test_clusters_keep_each_human_selectable_and_copyable(self):
@@ -1208,7 +1342,7 @@ class MapViewTests(unittest.TestCase):
         view.selection_list.selection_set(1)
         view._select_list()
         details = view.details.get("1.0", "end-1c")
-        for text in (BOB, "Teacher", "1,000.5, 2,000.5, 310.0", "3D distance"):
+        for text in (BOB, "Teacher", "1000.5, 2000.5, 310", "3D distance"):
             self.assertIn(text, details)
         self.assertLess(details.index("X / Y / Z"), details.index("Layer:"))
         view.copy_details()
@@ -1487,12 +1621,12 @@ class MapEditorIntegrationTests(unittest.TestCase):
         app._map_document = app.document
         return app
 
-    def test_warp_reviews_height_confirms_saves_and_reloads_without_on_open_repair(self):
+    def test_warp_reviews_coordinates_confirms_saves_and_reloads_without_on_open_repair(self):
         app = self._warp_document()
         player = app.map_view.data.player(WORLD)
         backup = Path("warp.sav.test.bak")
         destination = (1000.25, -2000.5, player.position[2])
-        target = (*destination[:2], 25.75)
+        target = (-12.25, 567.5, 25.750123)
         with (
             patch.object(gui, "_game_is_running", return_value=False),
             patch.object(gui.save_io, "save_is_stale", return_value=False),
@@ -1506,34 +1640,92 @@ class MapEditorIntegrationTests(unittest.TestCase):
             app._warp_player_on_map(WORLD, destination)
         dialog.assert_called_once_with(app, WORLD, destination)
         confirm.assert_called_once()
-        self.assertIn("25.750", confirm.call_args.args[1])
+        self.assertIn("-12.25, 567.5, 25.750123", confirm.call_args.args[1])
         self.assertIn("NOT checked", confirm.call_args.args[1])
         self.assertEqual("no", confirm.call_args.kwargs["default"])
         write.assert_called_once_with(app.document, player, target, app.keep_var.get())
         reload_save.assert_called_once_with(app.document.path, confirm_discard=False)
         repair.assert_not_called()
+        self.assertIn("-12.25, 567.5, 25.750123", app.status_var.get())
         self.assertIn("backup: warp.sav.test.bak", app.status_var.get())
         self.info.assert_called_once()
 
-    def test_real_height_dialog_preserves_clicked_xy_and_returns_edited_z(self):
+    def test_real_coordinate_dialog_defaults_and_returns_all_edited_axes(self):
         app = self.app
         seen = []
+        failures = []
 
-        def enter_height():
+        def enter_coordinates():
             dialogs = [child for child in app.winfo_children() if isinstance(child, gui._PlayerWarpDialog)]
-            self.assertEqual(1, len(dialogs))
             dialog = dialogs[0]
-            seen.append(dialog.height.get())
-            dialog.height.delete(0, tk.END)
-            dialog.height.insert(0, "-12.75")
-            dialog.ok()
+            try:
+                seen.append(tuple(dialog.coordinate_entries[axis].get() for axis in ("X", "Y", "Z")))
+                for axis, value in zip(("X", "Y", "Z"), ("-1.25", "222.5", "-12.75")):
+                    dialog.coordinate_entries[axis].delete(0, tk.END)
+                    dialog.coordinate_entries[axis].insert(0, value)
+                dialog.ok()
+            except Exception as exc:
+                failures.append(exc)
+                dialog.cancel()
 
-        app.after(30, enter_height)
+        app.after(30, enter_coordinates)
         dialog = gui._PlayerWarpDialog(app, WORLD, (45.25, -80.5, 3.125))
-        self.assertEqual(["3.125"], seen)
-        self.assertEqual((45.25, -80.5, -12.75), dialog.result)
+        self.assertEqual([], failures)
+        self.assertEqual([("45.25", "-80.5", "3.125")], seen)
+        self.assertEqual((-1.25, 222.5, -12.75), dialog.result)
 
-    def test_canceling_height_or_confirmation_never_writes(self):
+    def test_direct_coordinates_write_all_axes_and_create_a_backup(self):
+        app = self.app
+        raw = warp_save()
+        original = gui.save_io.compress_container(raw)
+        target = (-42.125, 1234.5, 6.75)
+        seen = []
+        failures = []
+
+        def enter_coordinates():
+            dialogs = [child for child in app.winfo_children() if isinstance(child, gui._PlayerWarpDialog)]
+            if not dialogs:
+                app.after(10, enter_coordinates)
+                return
+            dialog = dialogs[0]
+            try:
+                seen.append(tuple(dialog.coordinate_entries[axis].get() for axis in ("X", "Y", "Z")))
+                for axis, value in zip(("X", "Y", "Z"), target):
+                    dialog.coordinate_entries[axis].delete(0, tk.END)
+                    dialog.coordinate_entries[axis].insert(0, repr(value))
+                dialog.ok()
+            except Exception as exc:
+                failures.append(exc)
+                dialog.cancel()
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "direct-warp.sav"
+            path.write_bytes(original)
+            app.document = gui.save_io.load_save(path)
+            data = maps.read_map(app.document.raw)
+            app.map_view.set_data(data)
+            app._map_document = app.document
+            player = data.player(WORLD)
+            with (
+                patch.object(gui, "_game_is_running", return_value=False),
+                patch.object(gui.messagebox, "askyesno", return_value=True) as confirm,
+                patch.object(gui.messagebox, "showerror") as error,
+                patch.object(gui.messagebox, "showwarning"),
+            ):
+                app.after(10, enter_coordinates)
+                app.map_view.warp_coordinates_button.invoke()
+            self.assertEqual([], failures)
+            self.assertEqual([tuple(repr(value) for value in player.position)], seen)
+            error.assert_not_called()
+            confirm.assert_called_once()
+            backups = gui.save_io.list_backups(path)
+            self.assertEqual(1, len(backups))
+            self.assertEqual(original, backups[0].read_bytes())
+            updated = gui.save_io.load_save(path)
+            self.assertEqual(target, maps.read_map(updated.raw).player(WORLD).position)
+            self.info.assert_called_once()
+
+    def test_canceling_coordinates_or_confirmation_never_writes(self):
         for result, accept in ((None, True), ((1000, 2000, 10), False)):
             with self.subTest(result=result, accept=accept):
                 app = self._warp_document()

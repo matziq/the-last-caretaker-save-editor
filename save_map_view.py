@@ -76,6 +76,11 @@ class SaveMapView(ttk.Frame):
             toolbar, text="Warp player...", command=self._toggle_warp, state=tk.DISABLED,
         )
         self.warp_button.pack(side=tk.LEFT, padx=4)
+        self.warp_coordinates_button = ttk.Button(
+            filters, text="Warp to coordinates...", command=self._warp_coordinates,
+            state=tk.DISABLED,
+        )
+        self.warp_coordinates_button.pack(side=tk.RIGHT, padx=(4, 0))
         body = ttk.Frame(self)
         body.grid(row=2, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
@@ -289,6 +294,7 @@ class SaveMapView(ttk.Frame):
     def reset(self, message: str = "Load a save, then open Map to read saved positions.") -> None:
         self._cancel_warp()
         self.warp_button.configure(state=tk.DISABLED)
+        self.warp_coordinates_button.configure(state=tk.DISABLED)
         self._reset_location_filters()
         self.data = None
         self._populate_location_list()
@@ -319,9 +325,9 @@ class SaveMapView(ttk.Frame):
         world = self.world_var.get()
         if refresh_list:
             self._populate_location_list()
-        self.warp_button.configure(
-            state=tk.NORMAL if self.warp_player_callback and self.data.player(world) else tk.DISABLED,
-        )
+        warp_state = tk.NORMAL if self.warp_player_callback and self.data.player(world) else tk.DISABLED
+        for button in (self.warp_button, self.warp_coordinates_button):
+            button.configure(state=warp_state)
         world_points = [point for point in self.data.points if point.world == world]
         counts = Counter(point.layer for point in world_points)
         for key, label, _color, _enabled in LAYERS:
@@ -577,12 +583,26 @@ class SaveMapView(ttk.Frame):
             if self._picking_warp:
                 world = self.world_var.get()
                 player = self.data.player(world) if self.data else None
-                x, y = self.camera.world(
-                    event.x, event.y, self.canvas.winfo_width(), self.canvas.winfo_height(),
-                )
+                points = self._hit(event.x, event.y)
+                selected = self.selected if self.selected in points else None
                 self._cancel_warp()
                 if player is not None and self.warp_player_callback is not None:
-                    self.warp_player_callback(world, (x, y, player.position[2]))
+                    if len(points) > 1 and selected is None:
+                        self._select_group(points)
+                        self.status.set(
+                            "This marker contains multiple objects. Select one in Object details, "
+                            "then choose Warp to coordinates..."
+                        )
+                    else:
+                        if points:
+                            destination = (selected or points[0]).position
+                        else:
+                            x, y = self.camera.world(
+                                event.x, event.y, self.canvas.winfo_width(),
+                                self.canvas.winfo_height(),
+                            )
+                            destination = (x, y, player.position[2])
+                        self.warp_player_callback(world, destination)
             else:
                 self._select_group(self._hit(event.x, event.y))
         self._drag_origin = self._drag_last = None
@@ -597,8 +617,18 @@ class SaveMapView(ttk.Frame):
         self.warp_button.configure(text="Cancel warp")
         self.canvas.configure(cursor="crosshair")
         self.canvas.focus_set()
-        self.status.set("Click a destination on the map, then review its height. Drag still pans. "
+        self.status.set("Click a marker or map destination, then review X, Y, and Z. Drag still pans. "
                         "Escape or Cancel warp cancels. No terrain or collision safety checks.")
+
+    def _warp_coordinates(self) -> None:
+        world = self.world_var.get()
+        player = self.data.player(world) if self.data else None
+        if player is None or self.warp_player_callback is None:
+            return
+        destination = (self.selected.position if self.selected is not None
+                       and self.selected.world == world else player.position)
+        self._cancel_warp()
+        self.warp_player_callback(world, destination)
 
     def _cancel_warp(self) -> None:
         was_picking = self._picking_warp
@@ -650,7 +680,7 @@ class SaveMapView(ttk.Frame):
         self.move_button.configure(state=tk.NORMAL if movable else tk.DISABLED)
         distance = self.data.distance(point)
         lines = [point.label,
-                 "X / Y / Z (m): " + ", ".join(f"{value:,.1f}" for value in point.position),
+                 "X / Y / Z (m): " + ", ".join(repr(value) for value in point.position),
                  f"3D distance from saved player: {distance:,.1f} m" if distance is not None
                  else "3D distance: no unique saved player position"]
         if point.social_id:

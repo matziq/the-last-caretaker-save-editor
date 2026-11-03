@@ -517,7 +517,7 @@ Bastion and North Lantern sit at negative Y, South Echo at positive Y), so +Y
 runs down the screen and +X (east) runs right, matching an unmirrored top view.
 Grid labels show the raw saved X/Y values.
 
-Click a marker to see its identity, saved world coordinates in meters, height,
+Click a marker to see its identity, unrounded saved X/Y/Z coordinates in meters,
 and straight-line 3D distance from the saved player position. Human markers
 include the Social ID and saved profession when available. Selecting a marker
 opens the **Object details** panel; switch back to **Layers** to change layers.
@@ -533,13 +533,20 @@ only the hull's coordinates is not a supported boat warp.
 
 ### Warp the player
 
-Choose **Warp player...**, then click any point on the map. Dragging still pans;
-**Cancel warp** or `Escape` cancels picking. The editor uses the clicked X/Y
-coordinates in meters and opens a destination dialog with an editable **Height Z**.
-The starting height is the player's saved height, **not** the destination's terrain
-or water level. Review the height, click **OK**, then confirm **Warp player and save?**
-to create a backup, write the new position immediately, and reload the map.
-Load that save in the game to use the new position.
+Choose **Warp player...**, then click a marker or any point on the map. A marker
+starts the destination at that object's exact X, Y, and Z coordinates; a blank
+map point uses the clicked X/Y and the player's saved Z. If a marker contains
+several objects, select the desired object in **Object details**, then choose
+**Warp to coordinates...**. You can also use **Warp to coordinates...** directly
+without clicking the map; it starts with the selected object's coordinates, or
+the player's saved coordinates when nothing is selected. Dragging still pans;
+**Cancel warp** or `Escape` cancels picking.
+
+All three coordinates are editable in meters. The suggested height is **not**
+guaranteed to be the destination's terrain or water level. Review X, Y, and Z,
+click **OK**, then confirm **Warp player and save?** to create a backup, write
+the new position immediately, and reload the map. Load that save in the game to
+use the new position.
 
 **Close the game first.** The map has no terrain, collision or water-depth data:
 an unsafe destination can put the player underground, underwater, inside a building,
