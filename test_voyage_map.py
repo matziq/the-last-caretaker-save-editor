@@ -1322,6 +1322,7 @@ class MapViewTests(unittest.TestCase):
 
 class MapEditorIntegrationTests(unittest.TestCase):
     def setUp(self):
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
         for target, name, value in (
             (gui, "_load_settings", {}),
             (gui.LastCaretakerEditor, "_load_startup_save", None),
@@ -1416,6 +1417,8 @@ class MapEditorIntegrationTests(unittest.TestCase):
         )
         reload_save.assert_called_once_with(app.document.path, confirm_discard=False)
         self.assertIn("backup: Slot.sav.test.bak", app.status_var.get())
+        self.info.assert_called_once_with(
+            "Saved", f"Saved successfully.\n\n{app.document.path}", parent=app)
 
     def test_move_stops_when_game_is_running_or_confirmation_is_declined(self):
         app = self.app
@@ -1449,6 +1452,33 @@ class MapEditorIntegrationTests(unittest.TestCase):
             app._move_selected_map_object(point)
         confirm.assert_called_once()
         save_move.assert_not_called()
+        self.info.assert_not_called()
+
+    def test_move_write_failure_noop_and_reload_failure_never_report_saved(self):
+        app = self.app
+        point = maps.MapPoint(
+            "pod", WORLD, "BP_Module_Human_Pod_C123", "Human pod", "pods", (2, 3, 4),
+            actor_offset=500, move_block_reason="",
+        )
+        player = maps.MapPoint(
+            "player", WORLD, "BP_FirstPersonCharacter", "Saved player position",
+            "player", (100, 200, 300),
+        )
+        app.map_view.set_data(maps.MapData((point, player), (WORLD,)))
+        app._map_document = app.document
+        for state in ("write", "reload", "noop"):
+            with (
+                self.subTest(state=state),
+                patch.object(gui, "_game_is_running", return_value=False),
+                patch.object(gui.messagebox, "askyesno", return_value=True),
+                patch.object(gui.messagebox, "showerror"),
+                patch.object(app, "_save_map_relocation",
+                             side_effect=OSError("write failed") if state == "write" else None,
+                             return_value=None if state == "noop" else Path("move.bak")),
+                patch.object(app, "_load", return_value=state != "reload"),
+            ):
+                app._move_selected_map_object(point)
+            self.info.assert_not_called()
 
     def _warp_document(self):
         app = self.app
@@ -1483,6 +1513,7 @@ class MapEditorIntegrationTests(unittest.TestCase):
         reload_save.assert_called_once_with(app.document.path, confirm_discard=False)
         repair.assert_not_called()
         self.assertIn("backup: warp.sav.test.bak", app.status_var.get())
+        self.info.assert_called_once()
 
     def test_real_height_dialog_preserves_clicked_xy_and_returns_edited_z(self):
         app = self.app
@@ -1579,6 +1610,7 @@ class MapEditorIntegrationTests(unittest.TestCase):
                     error.assert_not_called()
                     self.assertIn("reload failed" if state == "reload" else "no save or backup",
                                   app.status_var.get())
+                self.info.assert_not_called()
 
     def test_reload_refreshes_positions_on_the_selected_map_and_preserves_filters(self):
         app = self.app

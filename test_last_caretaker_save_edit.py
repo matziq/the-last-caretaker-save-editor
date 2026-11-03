@@ -254,6 +254,7 @@ class AutoSaveCopyGuiTests(unittest.TestCase):
         self.copy = self.enterContext(patch.object(editor, "copy_autosave_to_manual"))
         self.confirm = self.enterContext(patch.object(gui.messagebox, "askyesno", return_value=True))
         self.error = self.enterContext(patch.object(gui.messagebox, "showerror"))
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
         self.game = self.enterContext(patch.object(gui, "_game_is_running", return_value=False))
         self.dialog = self.enterContext(patch.object(gui, "_ManualSaveDialog"))
 
@@ -273,6 +274,8 @@ class AutoSaveCopyGuiTests(unittest.TestCase):
         self.assertIn("AutoSave remains open", self.app.status_var.set.call_args.args[0])
         self.assertIn(str(self.target), self.confirm.call_args.args[1])
         self.error.assert_not_called()
+        self.info.assert_called_once_with(
+            "Saved", f"Saved successfully.\n\n{self.target}", parent=self.app)
 
     def test_multiple_slots_require_selection_and_honor_cancellation(self):
         other = Path("123_1.sav")
@@ -298,6 +301,7 @@ class AutoSaveCopyGuiTests(unittest.TestCase):
         self.confirm.return_value = False
         self.run_copy()
         self.copy.assert_not_called()
+        self.info.assert_not_called()
 
     def test_non_auto_save_pending_edits_and_game_running_are_guarded(self):
         for document in (None, SimpleNamespace(path=self.target)):
@@ -320,6 +324,7 @@ class AutoSaveCopyGuiTests(unittest.TestCase):
         self.error.assert_called_once_with("Copy AutoSave failed", "backup failed")
         self.app.status_var.set.assert_not_called()
         self.app._refresh_saves.assert_not_called()
+        self.info.assert_not_called()
 
 
 class CompressionMethodTests(unittest.TestCase):
@@ -738,13 +743,16 @@ class ContainerTests(unittest.TestCase):
 
 
 class MarkBlueprintsGuiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
+
     def _app(self, events: list[str]):
         return SimpleNamespace(
             document=SimpleNamespace(path=Path("x.sav")),
             keep_var=SimpleNamespace(get=lambda: 5),
             status_var=SimpleNamespace(set=lambda value: events.append(f"status:{value}")),
             _structural_guard=lambda: True,
-            _load=lambda path, *, confirm_discard: events.append("reload"),
+            _load=lambda path, *, confirm_discard: events.append("reload") or True,
         )
 
     def test_declined_confirmation_writes_nothing(self) -> None:
@@ -770,6 +778,8 @@ class MarkBlueprintsGuiTests(unittest.TestCase):
         mark.assert_called_once_with(
             app.document, ["DA_Prop_GyroBlueprintB"], make_backup=True, max_backups=5)
         self.assertEqual(["reload", "status:Marked 1 blueprint(s) scanned"], events)
+        self.info.assert_called_once_with(
+            "Saved", "Saved successfully.\n\nx.sav", parent=app)
 
     def test_all_scanned_reports_without_prompt(self) -> None:
         events: list[str] = []
@@ -780,6 +790,18 @@ class MarkBlueprintsGuiTests(unittest.TestCase):
             gui.LastCaretakerEditor._mark_blueprints_scanned(app)
         ask.assert_not_called()
         self.assertEqual(["status:All 1 known blueprint(s) are already scanned"], events)
+        self.info.assert_not_called()
+
+    def test_reload_failure_does_not_report_success(self) -> None:
+        app = self._app([])
+        app._load = Mock(return_value=False)
+        with (
+            patch.object(gui.save_io, "blueprint_scan_status", return_value=[("Rope", False)]),
+            patch.object(gui.save_io, "mark_blueprints_scanned", return_value=(["Rope"], None)),
+            patch.object(gui.messagebox, "askyesno", return_value=True),
+        ):
+            gui.LastCaretakerEditor._mark_blueprints_scanned(app)
+        self.info.assert_not_called()
 
 
 class BusyUiTests(unittest.TestCase):
@@ -840,6 +862,189 @@ class BusyUiTests(unittest.TestCase):
         self.assertEqual("", app.busy_var.value)
         self.assertIn("stop", events)
         self.assertEqual("cursor:", events[-2])
+
+
+class SaveNotificationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.path = Path("Slot.sav")
+        self.app = SimpleNamespace(
+            document=SimpleNamespace(
+                path=self.path, entries=[SimpleNamespace(offset=100)],
+                human_data=SimpleNamespace(error="", humans=[])),
+            pending={100: 5}, human_pending={}, human_attribute_pending={},
+            status_var=Mock(), keep_var=Mock(get=Mock(return_value=7)),
+            confirm_save_var=Mock(get=Mock(return_value=False)),
+            _load=Mock(return_value=True), _refresh_values=Mock(),
+            _populate_humans=Mock(), _populate_backups=Mock(),
+            _structural_guard=Mock(return_value=True),
+        )
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
+        self.error = self.enterContext(patch.object(gui.messagebox, "showerror"))
+        self.confirm = self.enterContext(patch.object(gui.messagebox, "askyesno", return_value=True))
+        self.game = self.enterContext(patch.object(gui, "_game_is_running", return_value=False))
+        self.write = self.enterContext(patch.object(gui.save_io, "save_changes", return_value=(1, 0, None)))
+
+    def test_save_popup_follows_write_and_reload_on_the_ui_thread_after_busy_ends(self) -> None:
+        app = self.app
+        main = threading.get_ident()
+        events = []
+        self.write.side_effect = lambda *_a, **_k: events.append("write") or (1, 0, None)
+        app._load.side_effect = lambda *_a, **_k: events.append("reload") or True
+
+        def shown(*_args, **_kwargs):
+            self.assertEqual(main, threading.get_ident())
+            self.assertFalse(gui._is_busy(app))
+            events.append("popup")
+
+        self.info.side_effect = shown
+        self.assertTrue(gui.LastCaretakerEditor._save(app))
+        self.assertEqual(["write", "reload", "popup"], events)
+        self.info.assert_called_once_with(
+            "Saved", f"Saved successfully.\n\n{self.path}", parent=app)
+
+    def test_no_loaded_save_no_edits_and_unchanged_values_do_not_report_saved(self) -> None:
+        app = self.app
+        self.write.return_value = (0, 0, None)
+        self.assertTrue(gui.LastCaretakerEditor._save(app))
+        app.pending.clear()
+        self.assertTrue(gui.LastCaretakerEditor._save(app))
+        app.document = None
+        self.assertFalse(gui.LastCaretakerEditor._save(app))
+        self.info.assert_not_called()
+        self.write.assert_called_once()
+
+    def test_canceled_blocked_or_failed_saves_never_report_success(self) -> None:
+        app = self.app
+        app.confirm_save_var.get.return_value = True
+        self.confirm.return_value = False
+        self.assertFalse(gui.LastCaretakerEditor._save(app))
+        self.write.assert_not_called()
+        self.confirm.return_value = True
+        self.game.return_value = True
+        self.assertFalse(gui.LastCaretakerEditor._save(app))
+        self.write.assert_not_called()
+        self.game.return_value = False
+        self.write.side_effect = OSError("disk full")
+        self.assertFalse(gui.LastCaretakerEditor._save(app))
+        self.assertEqual({100: 5}, app.pending)
+        self.error.assert_called_with("Save failed", "disk full")
+        self.info.assert_not_called()
+
+    def test_reload_failure_preserves_the_explicit_warning_without_a_success_popup(self) -> None:
+        app = self.app
+        app._load.return_value = False
+        self.assertFalse(gui.LastCaretakerEditor._save(app))
+        self.assertEqual({}, app.pending)
+        self.assertIn("reload failed", app.status_var.set.call_args.args[0])
+        self.info.assert_not_called()
+
+    def test_human_only_save_also_reports_saved(self) -> None:
+        app = self.app
+        human = SimpleNamespace(key=("World", "Human"), edit_error="")
+        app.document.human_data.humans = [human]
+        app.pending.clear()
+        app.human_pending[human.key] = "Doctor"
+        app._save_prompt = Mock(return_value="Write human changes?")
+        self.write.return_value = (0, 1, None)
+        self.assertTrue(gui.LastCaretakerEditor._save(app))
+        self.confirm.assert_called_once()
+        self.info.assert_called_once()
+
+    def test_batch_defers_multiple_writes_until_the_outer_busy_state_ends(self) -> None:
+        app = self.app
+        with gui._save_notifications(app), gui._busy_ui(app, "Repair & Top Off"):
+            self.assertTrue(gui.LastCaretakerEditor._save(app, confirm=False))
+            gui.LastCaretakerEditor._purge(app, lambda _doc: (2, None, None))
+            self.info.assert_not_called()
+        self.info.assert_called_once()
+        self.assertFalse(gui._is_busy(app))
+        self.assertFalse(hasattr(app, "_save_notice"))
+
+    def test_failed_purge_or_reload_suppresses_the_batch_success(self) -> None:
+        for problem in ("write", "reload"):
+            with self.subTest(problem=problem):
+                app = self.app
+                app._load.return_value = problem != "reload"
+
+                def action(_document):
+                    if problem == "write":
+                        raise OSError("rewrite failed")
+                    return 2, None, None
+
+                with gui._save_notifications(app):
+                    gui._report_saved(app, self.path)
+                    gui.LastCaretakerEditor._purge(app, action)
+                self.info.assert_not_called()
+                self.assertFalse(hasattr(app, "_save_notice"))
+
+    def test_failed_duplicate_scan_suppresses_an_earlier_repair_save(self) -> None:
+        app = self.app
+        with (
+            patch.object(gui.save_io, "find_duplicate_stacks", side_effect=ValueError("bad stacks")),
+            gui._save_notifications(app),
+        ):
+            gui._report_saved(app, self.path)
+            gui.LastCaretakerEditor._remove_duplicate_stacks(app, confirm=False)
+        self.info.assert_not_called()
+        self.error.assert_called_once_with("Scan failed", "bad stacks")
+
+    def test_incomplete_duplicate_cleanup_does_not_report_the_batch_as_saved(self) -> None:
+        app = self.app
+        with (
+            patch.object(gui.save_io, "find_duplicate_stacks", return_value=[]),
+            patch.object(gui.save_io, "count_unpurgeable_duplicate_stacks", return_value=2),
+            gui._save_notifications(app),
+        ):
+            gui._report_saved(app, self.path)
+            gui.LastCaretakerEditor._remove_duplicate_stacks(app, confirm=False)
+        self.info.assert_not_called()
+
+    def test_backup_restore_reports_saved_only_after_a_successful_reload(self) -> None:
+        app = self.app
+        app.backup_tree = Mock(
+            selection=Mock(return_value=("0",)), set=Mock(return_value="Slot.bak"))
+        for state in ("write", "reload", "cancel", "success"):
+            self.info.reset_mock()
+            app._load.return_value = state != "reload"
+            self.confirm.return_value = state != "cancel"
+            with self.subTest(state=state), patch.object(
+                gui.save_io, "restore_backup",
+                side_effect=OSError("restore failed") if state == "write" else None,
+            ):
+                gui.LastCaretakerEditor._restore_backup(app)
+            if state == "success":
+                self.info.assert_called_once_with(
+                    "Saved", f"Saved successfully.\n\n{self.path}", parent=app)
+            else:
+                self.info.assert_not_called()
+
+    def test_canceled_or_failed_configured_deletion_suppresses_batch_success(self) -> None:
+        app = self.app
+        app.repair_delete_items = ["Junk"]
+        app.confirm_delete_var = Mock(get=Mock(return_value=True))
+        self.confirm.return_value = False
+        for problem in ("cancel", "scan"):
+            with (
+                self.subTest(problem=problem),
+                patch.object(gui.save_io, "deletion_records", return_value=[SimpleNamespace()],
+                             side_effect=ValueError("bad records") if problem == "scan" else None),
+                gui._save_notifications(app),
+            ):
+                gui._report_saved(app, self.path)
+                gui.LastCaretakerEditor._remove_configured_items(app)
+        self.info.assert_not_called()
+
+    def test_unexpected_exception_cleans_up_without_leaking_a_success_popup(self) -> None:
+        app = self.app
+        with self.assertRaisesRegex(RuntimeError, "interrupted"):
+            with gui._save_notifications(app):
+                gui._report_saved(app, self.path)
+                raise RuntimeError("interrupted")
+        self.info.assert_not_called()
+        self.assertFalse(hasattr(app, "_save_notice"))
+        with gui._save_notifications(app):
+            gui._report_saved(app, self.path)
+        self.info.assert_called_once()
 
 
 class HumanSeedTimeTests(unittest.TestCase):
@@ -1991,6 +2196,9 @@ class SurvivalEnhancerTests(unittest.TestCase):
 
 
 class PlayerLockGuiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
+
     def _app(self, events: list[str], locked: bool):
         var = SimpleNamespace(value=locked)
         var.get = lambda: var.value
@@ -2001,7 +2209,7 @@ class PlayerLockGuiTests(unittest.TestCase):
             keep_var=SimpleNamespace(get=lambda: 5),
             status_var=SimpleNamespace(set=lambda value: events.append(f"status:{value}")),
             _structural_guard=lambda: True,
-            _load=lambda path, confirm_discard: events.append("reload"),
+            _load=lambda path, confirm_discard: events.append("reload") or True,
         )
         return app, var
 
@@ -2015,6 +2223,19 @@ class PlayerLockGuiTests(unittest.TestCase):
             gui.LastCaretakerEditor._toggle_player_lock(app, "health")
         self.assertEqual(("health", False), setter.call_args.args[1:])
         self.assertEqual("reload", events[0])
+        self.info.assert_called_once()
+
+    def test_no_change_or_reload_failure_does_not_report_saved(self) -> None:
+        for changed, loaded in ((0, True), (2, False)):
+            app, _var = self._app([], locked=True)
+            app._load = Mock(return_value=loaded)
+            with (
+                self.subTest(changed=changed, loaded=loaded),
+                patch.object(gui.messagebox, "askyesno", return_value=True),
+                patch.object(gui.save_io, "set_player_lock", return_value=(changed, None)),
+            ):
+                gui.LastCaretakerEditor._toggle_player_lock(app, "health")
+            self.info.assert_not_called()
 
     def test_toggle_cancel_reverts_checkbox(self) -> None:
         events: list[str] = []
@@ -3155,6 +3376,7 @@ class WorkerThreadingTests(unittest.TestCase):
     def setUp(self) -> None:
         self.main = threading.get_ident()
         self.threads: dict[str, int] = {}
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
 
     def _recorder(self, name: str, result=None):
         def call(*_args, **_kwargs):
@@ -3363,6 +3585,7 @@ class ResponsiveGuiTests(unittest.TestCase):
             return gui.LastCaretakerEditor()
 
     def setUp(self) -> None:
+        self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
         gvas.clear_item_map_cache()
         self.addCleanup(gvas.clear_item_map_cache)
         try:
@@ -3526,6 +3749,7 @@ class ResponsiveGuiTests(unittest.TestCase):
             prompt.assert_not_called()
             repair.assert_called_once_with(automatic=True)
             save.assert_called_once()
+            self.info.assert_called_once()
             self.assertNotEqual(before, path.read_bytes())
             self.assertEqual({}, app.pending)
             reloaded = editor.load_save(path)
@@ -3605,10 +3829,42 @@ class ResponsiveGuiTests(unittest.TestCase):
             repair.assert_called_once_with(automatic=True)
             save.assert_called_once()
             purge.assert_called_once()
+            self.info.assert_called_once()
+            self.assertFalse(gui._is_busy(app))
+            self.assertFalse(self._blocked())
             carried = [item for item in editor.load_save(path).items
                        if editor.is_carried(item.location) and item.asset == "Food Ration"]
             self.assertEqual(1, len(carried))
             self.assertEqual(editor.repair_stack_target("Food Ration", "", True), carried[0].count)
+
+    def test_repair_popup_waits_for_deletion_combine_and_the_input_gate_to_finish(self) -> None:
+        app = self.app
+        app.repair_on_open_var.set(True)
+        app.refill_storage_var.set(False)
+        app.confirm_delete_var.set(False)
+        app.repair_delete_items = ["Junk"]
+        raw = AutoSaveLayoutTests()._scenario(
+            backpack=[("Food Ration", 5), ("Food Ration", 2), ("Junk", 1)])
+        popup_state = []
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "repair.sav"
+            path.write_bytes(editor.compress_container(raw))
+            with (
+                patch.object(gui, "_game_is_running", return_value=False),
+                patch.object(gui.messagebox, "askyesno") as prompt,
+                patch.object(gui.save_io, "purge_items", wraps=gui.save_io.purge_items) as purge,
+            ):
+                self.info.side_effect = lambda *_a, **_k: popup_state.append(
+                    (gui._is_busy(app), self._blocked(), purge.call_count))
+                self.assertTrue(app._open_save(path))
+            prompt.assert_not_called()
+            self.info.assert_called_once_with(
+                "Saved", f"Saved successfully.\n\n{path}", parent=app)
+            self.assertEqual([(False, False, 2)], popup_state)
+            carried = [item.asset for item in editor.load_save(path).items
+                       if editor.is_carried(item.location)]
+            self.assertNotIn("Junk", carried)
+            self.assertEqual(1, carried.count("Food Ration"))
 
     def _blocked(self) -> bool:
         app = self.app
@@ -4801,8 +5057,12 @@ class ResourceAmountGuiTests(unittest.TestCase):
                 self.assertTrue(app._load(path, confirm_discard=False))
                 diesel = app.document.resources[0].entry
                 app._queue(diesel, "3000")
-                with patch.object(gui, "_game_is_running", return_value=False):
+                with (
+                    patch.object(gui, "_game_is_running", return_value=False),
+                    patch.object(gui.messagebox, "showinfo") as info,
+                ):
                     self.assertTrue(app._save(confirm=False))
+                info.assert_called_once()
                 self.assertEqual({}, app.pending)
                 self.assertEqual(3000, app.document.resources[0].entry.value)
                 self.assertEqual("3000", app.resource_tree.set(str(diesel.offset), "value"))

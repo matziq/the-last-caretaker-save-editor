@@ -6,6 +6,7 @@ import json
 import math
 from collections import Counter
 from contextlib import contextmanager
+from dataclasses import dataclass
 from fnmatch import fnmatchcase
 import os
 import struct
@@ -97,6 +98,39 @@ def _busy_stack(app) -> list:
 
 def _is_busy(app) -> bool:
     return bool(_busy_stack(app))
+
+
+@dataclass
+class _SaveNotice:
+    path: Path | None = None
+    failed: bool = False
+
+
+def _report_saved(app, path: Path) -> None:
+    notice = getattr(app, "_save_notice", None)
+    if isinstance(notice, _SaveNotice):
+        notice.path = path
+    else:
+        messagebox.showinfo("Saved", f"Saved successfully.\n\n{path}", parent=app)
+
+
+def _save_notification_failed(app) -> None:
+    notice = getattr(app, "_save_notice", None)
+    if isinstance(notice, _SaveNotice):
+        notice.failed = True
+
+
+@contextmanager
+def _save_notifications(app):
+    """Report a compound save once, after its final write and reload."""
+    notice = _SaveNotice()
+    app._save_notice = notice
+    try:
+        yield
+    finally:
+        del app._save_notice
+    if notice.path is not None and not notice.failed:
+        _report_saved(app, notice.path)
 
 
 @contextmanager
@@ -912,6 +946,7 @@ class LastCaretakerEditor(tk.Tk):
             self.status_var.set(
                 f"Warped player to {', '.join(f'{value:,.3f}' for value in target)} m "
                 f"(backup: {backup.name}). Load this save in the game.")
+            _report_saved(self, document.path)
 
     @_not_while_pumping
     def _move_selected_map_object(self, point: map_io.MapPoint) -> None:
@@ -980,6 +1015,7 @@ class LastCaretakerEditor(tk.Tk):
                 f"Moved {point.label} to the saved player position, 1 m north "
                 f"(backup: {backup.name})."
             )
+            _report_saved(self, document.path)
         else:
             self.status_var.set(
                 f"Object move was saved (backup: {backup.name}), but the editor could not reload it. "
@@ -2364,7 +2400,7 @@ class LastCaretakerEditor(tk.Tk):
                " (Top Off Rocket Resources disabled; these rocket resources are unchanged)."),
         ):
             return
-        with _busy_ui(self, "Processing Repair & Top Off...") as progress:
+        with _save_notifications(self), _busy_ui(self, "Processing Repair & Top Off...") as progress:
             LastCaretakerEditor._execute_repair_and_top_off(
                 self, owned, configured, overrides, storage_edits, progress, seed_edits,
                 rocket_edits,
@@ -2390,6 +2426,7 @@ class LastCaretakerEditor(tk.Tk):
             f"and {len(rocket_edits)} rocket field(s) ({len(edits)} value change(s))")
         progress("Saving repaired and refilled values...")
         if not self._save(confirm=False):
+            _save_notification_failed(self)
             return
         if getattr(self, "repair_delete_items", []):
             progress("Removing items from the configured deletion list...")
@@ -2406,11 +2443,13 @@ class LastCaretakerEditor(tk.Tk):
         try:
             records = _run_in_background(self, save_io.deletion_records, self.document, items)
         except Exception as exc:
+            _save_notification_failed(self)
             messagebox.showerror("Configured deletion failed", str(exc))
             return
         if not records:
             return
         if not self._structural_guard():
+            _save_notification_failed(self)
             return
         if self.confirm_delete_var.get() and not messagebox.askyesno(
             "Delete configured items?",
@@ -2418,6 +2457,7 @@ class LastCaretakerEditor(tk.Tk):
             "configured item name(s)?\n\n" + "\n".join(items[:15])
             + ("\n..." if len(items) > 15 else ""),
         ):
+            _save_notification_failed(self)
             self.status_var.set("Configured item deletion skipped")
             return
         keep = max(1, self.keep_var.get())
@@ -2611,6 +2651,7 @@ class LastCaretakerEditor(tk.Tk):
     ) -> None:
         """Collapse carried items split across several redundant stacks."""
         if not self._structural_guard():
+            _save_notification_failed(self)
             return
         with _busy_ui(self, "Scanning for duplicate stacks..."):
             try:
@@ -2623,10 +2664,12 @@ class LastCaretakerEditor(tk.Tk):
                     include_memory=include_memory,
                 )
             except Exception as exc:
+                _save_notification_failed(self)
                 messagebox.showerror("Scan failed", str(exc))
                 return
         if not duplicates:
             if unpurgeable:
+                _save_notification_failed(self)
                 self.status_var.set(
                     f"{unpurgeable} duplicate carried stack(s) detected but "
                     "cannot be safely removed yet (a section of this save's "
@@ -2651,6 +2694,7 @@ class LastCaretakerEditor(tk.Tk):
             "rewritten immediately. Use Create Backup Now first if you want "
             "an additional restore point.",
         ):
+            _save_notification_failed(self)
             return
         keep = max(1, self.keep_var.get())
         self._purge(lambda doc: save_io.purge_items(
@@ -2691,10 +2735,17 @@ class LastCaretakerEditor(tk.Tk):
             except Exception as exc:
                 messagebox.showerror("Mark scanned failed", str(exc))
                 return
-            self._load(self.document.path, confirm_discard=False)
+            loaded = self._load(self.document.path, confirm_discard=False)
+        if not loaded:
+            self.status_var.set(
+                "Blueprint scan changes were saved, but reload failed. "
+                "Reload this save before editing again.")
+            return
         self.status_var.set(
             f"Marked {len(added)} blueprint(s) scanned"
             + (f"; backup: {backup.name}" if backup else ""))
+        if added:
+            _report_saved(self, self.document.path)
 
     def _apply_repair_targets(self, values: dict[str, str],
                               asset_values: dict[str, str] | None = None) -> dict[str, int]:
@@ -3000,10 +3051,16 @@ class LastCaretakerEditor(tk.Tk):
                 var.set(not locked)
                 messagebox.showerror("Toggle failed", str(exc))
                 return
-            self._load(self.document.path, confirm_discard=False)
+            loaded = self._load(self.document.path, confirm_discard=False)
+        if not loaded:
+            self.status_var.set(
+                "Could not reload the saved player lock state. Reload this save before editing again.")
+            return
         self.status_var.set(
             f"{spec['label']} {'enabled' if locked else 'disabled'} ({changed} value(s) written)"
             + (f"; backup: {backup.name}" if backup else ""))
+        if changed:
+            _report_saved(self, self.document.path)
 
     @_not_while_pumping
     def _purge(self, action) -> None:
@@ -3011,6 +3068,7 @@ class LastCaretakerEditor(tk.Tk):
             try:
                 removed, backup, _report = _run_in_background(self, action, self.document)
             except Exception as exc:
+                _save_notification_failed(self)
                 messagebox.showerror("Remove failed", str(exc))
                 return
             if not removed:
@@ -3018,9 +3076,15 @@ class LastCaretakerEditor(tk.Tk):
                 return
             progress("Reloading rewritten save...")
             path = self.document.path
-            self._load(path, confirm_discard=False)
+            loaded = self._load(path, confirm_discard=False)
+        if not loaded:
+            _save_notification_failed(self)
+            self.status_var.set(
+                f"Removed {removed} record(s), but reload failed. Reload this save before editing again.")
+            return
         self.status_var.set(
             f"Removed {removed} record(s).")
+        _report_saved(self, path)
 
     def _edit_item_cell(self, event: tk.Event) -> None:
         iid = self.inventory_tree.identify_row(event.y)
@@ -3148,6 +3212,7 @@ class LastCaretakerEditor(tk.Tk):
                                 "Reload this save before editing again.")
             return False
         self.status_var.set(f"Saved {' and '.join(parts)}{note}.")
+        _report_saved(self, self.document.path)
         return True
 
     def _save_prompt(self, humans: dict, human_changes: dict, keep: int, attribute_changes: dict) -> str:
@@ -3238,6 +3303,8 @@ class LastCaretakerEditor(tk.Tk):
                 "both saves backed up. AutoSave remains open.")
         except Exception as exc:
             messagebox.showerror("Copy AutoSave failed", str(exc))
+            return
+        _report_saved(self, destination)
 
     @_not_while_pumping
     def _create_backup(self) -> None:
@@ -3268,13 +3335,19 @@ class LastCaretakerEditor(tk.Tk):
         try:
             with _busy_ui(self, "Restoring backup..."):
                 _run_in_background(self, save_io.restore_backup, self.document.path, path)
-                self._load(
+                loaded = self._load(
                     self.document.path,
                     confirm_discard=False,
                 )
-            self.status_var.set(f"Restored {path.name}")
         except Exception as exc:
             messagebox.showerror("Restore failed", str(exc))
+            return
+        if not loaded:
+            self.status_var.set(
+                "Backup was restored, but reload failed. Reload this save before editing again.")
+            return
+        self.status_var.set(f"Restored {path.name}")
+        _report_saved(self, self.document.path)
 
     def _open_folder(self) -> None:
         if self.document:

@@ -380,6 +380,11 @@ game first. This is a byte-for-byte copy, not a conversion of the AutoSave layou
   a confirmation dialog appears each time; unchecking it (remembered between
   runs) makes Save Changes write immediately. Saves that include human
   profession or stat changes always ask first.
+  A **Saved** popup appears after a successful save and reload, including
+  maintenance actions, map moves/warps, survival locks, AutoSave copies, and
+  backup restores. Repair & Top Off shows it only once, after its deletion and
+  Combine steps finish. No success popup is shown for canceled, failed, or
+  no-change actions, or if the editor cannot reload the written save.
 
 ## List controls
 
