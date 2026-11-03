@@ -51,7 +51,8 @@ class InventoryTypeColorTests(unittest.TestCase):
                 self.assertEqual(f"inventory:{expected}", gui._inventory_type_tag(item))
                 self.assertIn(expected, gui.INVENTORY_TYPE_COLORS)
         for key in editor.REPAIR_CATEGORY_KEYS:
-            if key.startswith("storage.") or key == "not_carried":
+            # Storage and rocket targets describe world resources, not inventory items.
+            if key.startswith(("storage.", "rocket.")) or key == "not_carried":
                 continue
             group = key.split(".", 1)[0]
             self.assertIn("modules" if group == "cylinders" else group,
