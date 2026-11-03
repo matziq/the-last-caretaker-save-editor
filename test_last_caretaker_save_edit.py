@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import os
 import struct
 import sys
@@ -3588,12 +3589,17 @@ class ResponsiveGuiTests(unittest.TestCase):
         self.info = self.enterContext(patch.object(gui.messagebox, "showinfo"))
         gvas.clear_item_map_cache()
         self.addCleanup(gvas.clear_item_map_cache)
+        # Collect Tk garbage on the main thread so a later collection cannot
+        # run Variable.__del__ on a save worker thread and abort Tcl.
+        gc.collect()
+        self.addCleanup(gc.collect)
         try:
             self.app = self._make_app()
         except gui.tk.TclError as exc:
             self.skipTest(f"Tk unavailable: {exc}")
         self.app.withdraw()
         self.addCleanup(self._destroy, self.app)
+        gc.collect()
 
     @staticmethod
     def _destroy(app) -> None:
